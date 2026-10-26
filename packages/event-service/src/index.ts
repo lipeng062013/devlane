@@ -1,20 +1,26 @@
-import Database from 'better-sqlite3';
+import initSqlJs, { type Database, type SqlValue } from 'sql.js';
 import { appendEvent, hashEvent, verifyChain, type LaneEvent, type NewEvent } from '@devlane/event-schema';
 
 export interface EventServiceConfig {
-  dbPath: string;
+  dbPath?: string;
 }
 
 export class EventService {
-  private db: Database.Database;
+  private db: Database | null = null;
+  private ready: Promise<void>;
 
-  constructor(config: EventServiceConfig) {
-    this.db = new Database(config.dbPath);
+  constructor(config: EventServiceConfig = {}) {
+    this.ready = this.init();
+  }
+
+  private async init(): Promise<void> {
+    const SQL = await initSqlJs();
+    this.db = new SQL.Database();
     this.initSchema();
   }
 
   private initSchema(): void {
-    this.db.exec(`
+    this.db!.run(`
       CREATE TABLE IF NOT EXISTS lane_event (
         id TEXT PRIMARY KEY,
         lane_id TEXT NOT NULL,
@@ -34,74 +40,72 @@ export class EventService {
     `);
   }
 
-  /** 在指定 lane 的最后一个事件之后追加新事件，返回完整事件。 */
-  append(input: NewEvent): LaneEvent {
-    const last = this.getLast(input.laneId);
+  async append(input: NewEvent): Promise<LaneEvent> {
+    await this.ready;
+    const last = await this.getLast(input.laneId);
     const event = appendEvent(last, input);
     
-    const stmt = this.db.prepare(`
-      INSERT INTO lane_event (id, lane_id, run_id, seq, type, actor, ts, payload, parent_ids, artifact_ids, prev_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
-      event.id,
-      event.laneId,
-      event.runId,
-      event.seq,
-      event.type,
-      JSON.stringify(event.actor),
-      event.ts,
-      JSON.stringify(event.payload),
-      JSON.stringify(event.parentIds),
-      JSON.stringify(event.artifactIds),
-      event.prevHash,
+    this.db!.run(
+      `INSERT INTO lane_event (id, lane_id, run_id, seq, type, actor, ts, payload, parent_ids, artifact_ids, prev_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        event.id,
+        event.laneId,
+        event.runId,
+        event.seq,
+        event.type,
+        JSON.stringify(event.actor),
+        event.ts,
+        JSON.stringify(event.payload),
+        JSON.stringify(event.parentIds),
+        JSON.stringify(event.artifactIds),
+        event.prevHash,
+      ],
     );
     
     return event;
   }
 
-  /** 获取指定 lane 的最后一个事件，没有则返回 null。 */
-  getLast(laneId: string): LaneEvent | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM lane_event WHERE lane_id = ? ORDER BY seq DESC LIMIT 1
-    `);
-    const row = stmt.get(laneId) as any;
-    return row ? this.rowToEvent(row) : null;
+  async getLast(laneId: string): Promise<LaneEvent | null> {
+    await this.ready;
+    const result = this.db!.exec(`SELECT * FROM lane_event WHERE lane_id = ? ORDER BY seq DESC LIMIT 1`, [laneId]);
+    if (result.length === 0 || result[0]!.values.length === 0) return null;
+    return this.rowToEvent(result[0]!.columns, result[0]!.values[0]!);
   }
 
-  /** 分页获取指定 lane 的事件，afterSeq 为上次最后一个事件的 seq。 */
-  list(laneId: string, afterSeq = 0, limit = 50): LaneEvent[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM lane_event WHERE lane_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?
-    `);
-    const rows = stmt.all(laneId, afterSeq, limit) as any[];
-    return rows.map((r) => this.rowToEvent(r));
+  async list(laneId: string, afterSeq = 0, limit = 50): Promise<LaneEvent[]> {
+    await this.ready;
+    const result = this.db!.exec(
+      `SELECT * FROM lane_event WHERE lane_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?`,
+      [laneId, afterSeq, limit],
+    );
+    if (result.length === 0) return [];
+    return result[0]!.values.map((row) => this.rowToEvent(result[0]!.columns, row));
   }
 
-  /** 校验指定 lane 的哈希链完整性。 */
-  verifyLane(laneId: string): { ok: boolean; brokenAtSeq?: number; reason?: string } {
-    const events = this.list(laneId, 0, 10000);
+  async verifyLane(laneId: string): Promise<{ ok: boolean; brokenAtSeq?: number; reason?: string }> {
+    const events = await this.list(laneId, 0, 10000);
     return verifyChain(events);
   }
 
-  private rowToEvent(row: any): LaneEvent {
+  private rowToEvent(columns: string[], values: SqlValue[]): LaneEvent {
+    const obj = Object.fromEntries(columns.map((col, i) => [col, values[i]]));
     return {
-      id: row.id,
-      laneId: row.lane_id,
-      runId: row.run_id,
-      seq: row.seq,
-      type: row.type,
-      actor: JSON.parse(row.actor),
-      ts: row.ts,
-      payload: JSON.parse(row.payload),
-      parentIds: JSON.parse(row.parent_ids),
-      artifactIds: JSON.parse(row.artifact_ids),
-      prevHash: row.prev_hash,
+      id: String(obj.id ?? ''),
+      laneId: String(obj.lane_id ?? ''),
+      runId: obj.run_id ? String(obj.run_id) : null,
+      seq: Number(obj.seq ?? 0),
+      type: String(obj.type ?? '') as any,
+      actor: JSON.parse(String(obj.actor ?? '{}')),
+      ts: String(obj.ts ?? ''),
+      payload: JSON.parse(String(obj.payload ?? '{}')),
+      parentIds: JSON.parse(String(obj.parent_ids ?? '[]')),
+      artifactIds: JSON.parse(String(obj.artifact_ids ?? '[]')),
+      prevHash: String(obj.prev_hash ?? ''),
     };
   }
 
   close(): void {
-    this.db.close();
+    this.db?.close();
   }
 }

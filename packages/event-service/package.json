@@ -6,6 +6,6 @@
   "main": "src/index.ts",
   "dependencies": {
     "@devlane/event-schema": "*",
-    "better-sqlite3": "^11.8.1"
+    "sql.js": "^1.12.0"
   }
 }
