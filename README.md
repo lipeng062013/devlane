@@ -1,89 +1,69 @@
 # DevLane
 
-面向研发团队的 AI 并行开发工作台。从需求池进，到 PR 出，中间每一步都看得见。
+给程序员自己用的 AI 任务台。描述一个缺陷或需求，DevLane 为它单独建一个 git worktree 和分支，让本机的 Claude Code 在里面干活。你看着过程，审阅 diff，跑测试，满意了就提交、推送、开 PR；不满意就追问或丢弃。**你当前的工作目录始终不被碰。**
 
-## 当前状态：可运行的成品（模拟执行器）
+- 运行在你自己的电脑上，只监听 `127.0.0.1`
+- 调用你本机已经登录的 `claude` 命令，不需要另外配模型密钥
+- 能从 Jira 列表里选 issue，一键变成任务（只读，不改 Jira）
+- 项目路径手动输入，支持任意本地 git 仓库
 
-已经可以登录、建需求、开泳道、看泳道图实时推进、处理门禁、合并。
+使用方法见 [docs/02-使用手册.md](docs/02-使用手册.md)，产品设计见 [docs/01-产品设计.md](docs/01-产品设计.md)。
 
-**执行器是模拟的**：它按脚本产生结构真实的事件（提交、测试失败、重试、换模型、门禁），经过真实的状态机、策略引擎和哈希链，但不调用模型，也不修改任何代码。界面右上角有「模拟执行器」标记。接入真实执行器需要模型密钥和沙箱（见「尚未完成」）。
+## 运行
 
-### 功能
-
-- **需求池**：就绪评分（验收标准、复现步骤、影响范围、优先级、截止时间、负责人），满 70 分才能开泳道；支持手动新建，配置 Jira 后可导入
-- **泳道图**：每条泳道一行，事件按顺序成节点，实时推送（SSE），点节点看事件详情
-- **调度**：排队、并发上限（默认 3）、暂停、恢复、放弃
-- **策略与门禁**：改 `package.json` 等高风险文件会暂停并等你批准或拒绝；缺陷流水线在红测阶段改业务代码会被拒绝
-- **可审计**：每条泳道的事件用 SHA-256 哈希链串联，界面上可一键校验
-- **持久化**：事件存 SQLite（sql.js，无需编译），看板数据存 JSON，重启后从断点继续
-- **认证**：口令登录，HttpOnly 会话 cookie，登录限流，基础安全头
-
-## 本地运行
-
-使用方法见 [docs/05-使用手册.md](docs/05-使用手册.md)。
+需要：Node 20+、git、已登录的 Claude Code（`claude` 命令）。创建 PR 还需要 [GitHub CLI](https://cli.github.com/)（`gh auth login`）。
 
 ```bash
 npm install
-npm run typecheck   # 类型检查（服务端 + 前端）
-npm test            # 103 个测试
-npm run build       # 产物在 dist/
-DEVLANE_PASSWORD=你的口令 npm start      # 默认 http://127.0.0.1:8787
+npm run build
+npm start          # 启动并自动打开浏览器：http://127.0.0.1:7788
 ```
 
-开发时前端热更新：一个终端 `npm run dev:server`，另一个终端 `npm run dev:web`，打开 http://localhost:5173 。
+换端口：`node dist/server.mjs --port 7799`。数据目录默认 `~/.devlane`，可用环境变量 `DEVLANE_HOME` 改。
 
-PowerShell 设置环境变量：`$env:DEVLANE_PASSWORD='你的口令'; npm start`
+## 开发
 
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `DEVLANE_PASSWORD` | 随机生成并打印 | 登录口令 |
-| `PORT` / `HOST` | 8787 / 127.0.0.1 | 监听地址 |
-| `DEVLANE_DATA_DIR` | `./data` | 数据目录 |
-| `DEVLANE_TICK_MS` | 2500 | 模拟执行器每步间隔 |
-| `DEVLANE_MAX_PARALLEL` | 3 | 同时运行的泳道数 |
-| `DEVLANE_SEED_DEMO` | 开启 | 设为 `0` 则首次启动不放示例需求 |
-| `JIRA_BASE_URL` `JIRA_EMAIL` `JIRA_API_TOKEN` | 无 | 三项都设置后启用「从 Jira 导入」 |
-| `JIRA_ACCEPTANCE_FIELD` | 无 | 验收标准所在的自定义字段 id |
-| `JIRA_DEFAULT_JQL` | `statusCategory != Done ORDER BY created DESC` | 导入使用的 JQL |
-
-## 部署到服务器
-
-部署脚本不改 nginx、防火墙、Docker，不装系统软件包。它用独立目录 `/opt/devlane`、独立系统用户、独立端口，并用 systemd 限制内存与 CPU。部署前后会对比服务器上的监听端口、运行服务和容器，已有项目有任何一项消失就报警。
-
-```powershell
-.\deploy\deploy.ps1 -InspectOnly   # 只读检查服务器，不改任何东西
-.\deploy\deploy.ps1                # 测试、打包、上传、安装、验证
-.\deploy\deploy.ps1 -Uninstall     # 卸载（保留数据）
+```bash
+npm run typecheck   # 服务端 + 前端类型检查
+npm test            # 206 项测试（含真实 git 操作）
+npm run build
 ```
 
-回退：每次升级保留最近 3 个版本，新版本健康检查失败时自动切回上一版本。
+真实环境验证（会调用真实的 Claude，产生少量费用）：
 
-## 项目结构
+```bash
+node dist/server.mjs --port 7799        # 终端 1，建议先设 DEVLANE_HOME 到临时目录
+node scripts/e2e-real.mjs http://127.0.0.1:7799       # 修缺陷、审阅、测试、提交、追问、丢弃
+node scripts/e2e-approval.mjs http://127.0.0.1:7799   # 被拦截 → 放行 → 续接
+```
+
+## 目录
 
 ```
 packages/
-  event-schema   事件类型、payload 校验、哈希链
-  event-service  事件存储（SQLite，可落盘）
-  state-machine  泳道状态机
-  policy-engine  路径、命令、范围、高风险文件、缺陷阶段规则
-  readiness      就绪评分
-  adf            Atlassian 文档格式转 Markdown
-  server         编排器、执行器接口与模拟执行器、Jira 连接器、HTTP API
-  web            React 前端
-deploy/          服务器端脚本与一键部署
-scripts/         构建、发布、端到端冒烟（e2e-smoke.mjs）、界面检查（ui-check.mjs）
-docs/            需求、PRD、技术设计、落地缺口
+  app/    本地服务：git worktree、Claude 适配器、权限、任务调度、Jira 客户端、HTTP API
+  web/    React 前端
+  adf/    Atlassian 文档格式转 Markdown（Jira 描述用）
+scripts/  构建、真实环境验证、界面截图
+docs/     产品设计、使用手册；archive-团队版/ 是之前面向团队的设计（已废弃）
 ```
 
-## 尚未完成
+团队版（事件链、状态机、策略引擎、服务器部署）的完整代码保留在 git 标签 `v0.1-team-demo`。
 
-- **真实执行器**：`Executor` 接口已定义，需要模型 API 密钥与预算，以及沙箱（Docker 或更强隔离）。当前只有模拟执行器。
-- **Jira 联调**：连接器已按 Jira Cloud 的 `/rest/api/3/search/jql` 实现并用夹具测试，尚未对真实站点联调。回写 Jira 状态未实现。
-- **GitHub PR**：当前 PR 是模拟的（`simulated://pr/n`），未创建真实 PR。
-- **评审打回**：状态机允许评审中打回到运行，界面和执行器脚本还没有对应的返工流程。
-- **多用户**：目前是单一口令、单一用户 `admin`。
-- **HTTPS**：服务本身是 HTTP。口令在明文链路上传输，正式使用前应放到 HTTPS 反向代理之后。
+## 安全模型
 
-阻塞项详见 `docs/04-落地缺口分析.md`。
+这个服务能在你的电脑上运行命令，所以：
+
+- 只监听 `127.0.0.1`，并校验 `Host`（防 DNS 重绑定）；写操作必须带自定义请求头、`Origin` 必须是本机（防其他网页偷调）。
+- Claude 在独立 worktree 里工作；权限通过 `--settings` 文件明确给出，**永久禁止** `git commit / push / reset / checkout / clean`、`rm`、`sudo`、`curl`、`gh` 等，这些即使你点「放行」也不行。
+- 需要审批的操作（装依赖、联网等）被自动拒绝并记录，由你逐条决定是否放行，精确到那一条命令。
+- Jira Token 只保存在 `~/.devlane/state.json`，接口永不返回，不写日志。
+
+不覆盖的风险：Claude 通过被允许的测试命令间接运行仓库里的恶意脚本。对不可信仓库请先自行评估。
+
+## 已知限制
+
+- 目前只支持 Claude Code；适配器接口已留好，可以加 `kiro-cli`、`codex`。
+- Jira 客户端用夹具和假服务器验证过请求格式，**尚未对真实的 Jira 站点联调**，需要你填入凭据后确认。
+- 费用显示来自 claude 自己的统计；续接会话时是否累计取决于 claude 的实现，界面上的数字仅供参考。
+- 没有多人协作功能；单用户、单机。
