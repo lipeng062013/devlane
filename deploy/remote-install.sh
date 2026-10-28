@@ -46,19 +46,26 @@ if [ -z "$NODE_BIN" ]; then
 fi
 echo "使用 Node: $NODE_BIN ($("$NODE_BIN" -v))"
 
-# 环境文件：已存在时保留原口令，只更新端口
+# 环境文件：不存在则创建；口令文件存在且非空时，总是用它更新口令
 if [ ! -f /etc/devlane.env ]; then
-  [ -f /tmp/devlane-pw ] || { echo "首次安装需要 /tmp/devlane-pw" >&2; exit 4; }
-  pw="$(cat /tmp/devlane-pw)"
   umask 077
   {
     echo "PORT=$PORT"
     echo "HOST=0.0.0.0"
-    echo "DEVLANE_PASSWORD=$pw"
     echo "DEVLANE_DATA_DIR=$APP/data"
   } > /etc/devlane.env
 fi
+if [ -s /tmp/devlane-pw ]; then
+  pw="$(cat /tmp/devlane-pw)"
+  ( umask 077; grep -v '^DEVLANE_PASSWORD=' /etc/devlane.env > /etc/devlane.env.new || true
+    echo "DEVLANE_PASSWORD=$pw" >> /etc/devlane.env.new )
+  mv /etc/devlane.env.new /etc/devlane.env
+fi
 rm -f /tmp/devlane-pw
+if ! grep -q '^DEVLANE_PASSWORD=.' /etc/devlane.env; then
+  echo "未设置登录口令，拒绝启动一个没有固定口令的服务" >&2
+  exit 4
+fi
 sed -i "s/^PORT=.*/PORT=$PORT/" /etc/devlane.env
 chown root:devlane /etc/devlane.env
 chmod 640 /etc/devlane.env
