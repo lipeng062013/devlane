@@ -1,14 +1,19 @@
 {
   "name": "devlane",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p packages/web/tsconfig.json",
+    "test": "vitest run",
+    "build": "node scripts/build.mjs",
+    "dev:server": "node scripts/build.mjs --server-only && node dist/server.mjs",
+    "dev:web": "npm run dev -w @devlane/web",
+    "start": "node dist/server.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
