@@ -20,6 +20,8 @@
 
 ## 本地运行
 
+使用方法见 [docs/05-使用手册.md](docs/05-使用手册.md)。
+
 ```bash
 npm install
 npm run typecheck   # 类型检查（服务端 + 前端）
