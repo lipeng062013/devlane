@@ -21,6 +21,21 @@ npm start          # 启动并自动打开浏览器：http://127.0.0.1:7788
 
 换端口：`node dist/server.mjs --port 7799`。数据目录默认 `~/.devlane`，可用环境变量 `DEVLANE_HOME` 改。
 
+## 部署到服务器（只能通过 SSH 隧道访问）
+
+DevLane 没有登录，能在运行它的机器上执行命令，所以**服务只监听服务器的 127.0.0.1，不对公网开放**。部署脚本：
+
+```powershell
+.\deploy\deploy.ps1 -InspectOnly   # 只读检查服务器
+.\deploy\deploy.ps1                # 测试、打包、上传、安装、验证（默认端口 7790）
+.\deploy\tunnel.ps1                # 建立隧道，然后浏览器打开 http://127.0.0.1:7790
+.\deploy\deploy.ps1 -Uninstall     # 卸载（保留数据）
+```
+
+- 用独立的 `devlane` 系统用户运行，**不是**有 sudo 和 docker 权限的账号；systemd 沙箱里只有 `/opt/devlane/home` 可写，限制 600M 内存、80% CPU。
+- Node 和 Claude Code 都装在 `/opt/devlane` 下，不动系统软件包；不改 nginx、防火墙、Docker。
+- 部署前后对比服务器上的监听端口、运行服务和容器，已有项消失会报警并退出；新版本健康检查失败会自动回退。
+- 服务器上的 claude 需要你自己提供认证，见 `docs/02-使用手册.md` 第 13 节。
 ## 开发
 
 ```bash

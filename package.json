@@ -11,6 +11,7 @@
     "test": "vitest run",
     "build": "node scripts/build.mjs",
     "start": "node dist/server.mjs --open",
+    "pack": "node scripts/pack.mjs",
     "dev": "node scripts/build.mjs --server-only && node dist/server.mjs"
   },
   "devDependencies": {
