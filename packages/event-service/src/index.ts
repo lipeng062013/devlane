@@ -1,22 +1,46 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import initSqlJs, { type Database, type SqlValue } from 'sql.js';
-import { appendEvent, hashEvent, verifyChain, type LaneEvent, type NewEvent } from '@devlane/event-schema';
+import { appendEvent, verifyChain, type LaneEvent, type NewEvent } from '@devlane/event-schema';
 
 export interface EventServiceConfig {
+  /** 指定后，数据库在每次追加后写回该文件，重启时从该文件恢复；不指定则只在内存中。 */
   dbPath?: string;
 }
 
 export class EventService {
   private db: Database | null = null;
   private ready: Promise<void>;
+  private readonly dbPath: string | undefined;
 
   constructor(config: EventServiceConfig = {}) {
+    this.dbPath = config.dbPath;
     this.ready = this.init();
   }
 
   private async init(): Promise<void> {
     const SQL = await initSqlJs();
-    this.db = new SQL.Database();
+    this.db =
+      this.dbPath && existsSync(this.dbPath)
+        ? new SQL.Database(readFileSync(this.dbPath))
+        : new SQL.Database();
     this.initSchema();
+  }
+
+  /** 先写临时文件再改名，避免进程在写入中途退出时留下损坏的数据库。 */
+  private persist(): void {
+    if (!this.dbPath) return;
+    mkdirSync(dirname(this.dbPath), { recursive: true });
+    const tmp = `${this.dbPath}.tmp`;
+    writeFileSync(tmp, this.db!.export());
+    renameSync(tmp, this.dbPath);
+  }
+
+  async listLaneIds(): Promise<string[]> {
+    await this.ready;
+    const result = this.db!.exec(`SELECT DISTINCT lane_id FROM lane_event ORDER BY lane_id`);
+    if (result.length === 0) return [];
+    return result[0]!.values.map((row) => String(row[0]));
   }
 
   private initSchema(): void {
@@ -62,7 +86,8 @@ export class EventService {
         event.prevHash,
       ],
     );
-    
+    this.persist();
+
     return event;
   }
 

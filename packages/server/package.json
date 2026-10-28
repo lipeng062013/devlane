@@ -1,0 +1,17 @@
+{
+  "name": "@devlane/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@devlane/adf": "*",
+    "@devlane/event-schema": "*",
+    "@devlane/event-service": "*",
+    "@devlane/policy-engine": "*",
+    "@devlane/readiness": "*",
+    "@devlane/state-machine": "*",
+    "@fastify/static": "^10.1.8",
+    "fastify": "^5.12.7"
+  }
+}

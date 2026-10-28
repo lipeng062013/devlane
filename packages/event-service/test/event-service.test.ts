@@ -78,3 +78,31 @@ describe('EventService', () => {
     svc.close();
   });
 });
+
+describe('EventService 持久化', () => {
+  it('指定 dbPath 后数据写盘，重新打开可读回且哈希链完整', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'devlane-evt-'));
+    try {
+      const dbPath = join(dir, 'nested', 'events.db');
+      const first = new EventService({ dbPath });
+      await first.append(makeEvent('lane-p', 'commit'));
+      await first.append(makeEvent('lane-p', 'test_pass'));
+      first.close();
+
+      const second = new EventService({ dbPath });
+      expect((await second.list('lane-p')).map((e) => e.seq)).toEqual([1, 2]);
+      expect(await second.listLaneIds()).toEqual(['lane-p']);
+      expect((await second.verifyLane('lane-p')).ok).toBe(true);
+      // 重新打开后继续追加，序号接续
+      const third = await second.append(makeEvent('lane-p', 'test_fail'));
+      expect(third.seq).toBe(3);
+      expect((await second.verifyLane('lane-p')).ok).toBe(true);
+      second.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
