@@ -3,3 +3,5 @@ dist/
 *.log
 .env
 *.db
+deploy/.devlane-secret.txt
+release/
