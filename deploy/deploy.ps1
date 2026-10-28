@@ -41,7 +41,7 @@ if ($InspectOnly) {
 
 if ($Uninstall) {
   Send-Files @("$root\deploy\remote-uninstall.sh")
-  $rc = Invoke-Remote 'sudo sh /tmp/remote-uninstall.sh; rc=$?; rm -f /tmp/remote-uninstall.sh; exit $rc'
+  $rc = Invoke-Remote "sudo env DEVLANE_PORT=$Port sh /tmp/remote-uninstall.sh; rc=`$?; rm -f /tmp/remote-uninstall.sh; exit `$rc"
   exit $rc
 }
 

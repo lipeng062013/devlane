@@ -153,6 +153,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.post<{ Params: { id: string } }>('/api/tasks/:id/ignore', async (req) => manager.ignoreDenials(req.params.id));
   app.post<{ Params: { id: string } }>('/api/tasks/:id/stop', async (req) => manager.stop(req.params.id));
   app.post<{ Params: { id: string } }>('/api/tasks/:id/test', async (req) => manager.runTests(req.params.id));
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/test/stop', async (req) => manager.stopTests(req.params.id));
   app.post<{ Params: { id: string } }>('/api/tasks/:id/discard', async (req) => manager.discard(req.params.id));
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/commit', async (req) =>

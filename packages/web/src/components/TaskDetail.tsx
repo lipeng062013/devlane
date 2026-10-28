@@ -33,7 +33,7 @@ export default function TaskDetail({ task }: { task: Task }) {
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: 'timeline', label: '过程' },
     { id: 'changes', label: '变更' },
-    { id: 'test', label: task.test ? `测试 · ${task.test.status === 'passed' ? '通过' : task.test.status === 'failed' ? '失败' : '运行中'}` : '测试' },
+    { id: 'test', label: task.test ? `测试 · ${{ passed: '通过', failed: '失败', running: '运行中', stopped: '已停止' }[task.test.status]}` : '测试' },
     { id: 'deliver', label: task.prUrl ? '交付 · 已开 PR' : task.commitSha ? '交付 · 已提交' : '交付' },
   ];
 

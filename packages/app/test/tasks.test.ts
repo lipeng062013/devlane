@@ -11,9 +11,20 @@ import { cleanupTemp, makeRepo, sh, tempDir } from './helpers';
 afterEach(cleanupTemp);
 
 const CHECK_JS = "const fs = require('fs');\nconst s = fs.readFileSync('sum.js', 'utf8');\nconsole.log('checking');\nprocess.exit(s.includes('a + b') ? 0 : 1);\n";
+// 模拟一个跑很久的测试：先输出一行，记下自己的进程号，然后一直挂着
+const SLOW_JS = "const fs = require('fs');\nfs.writeFileSync('slow.pid', String(process.pid));\nconsole.log('started');\nsetInterval(() => {}, 1000);\n";
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function setup(scripts: Script[], opts: { maxConcurrent?: number; project?: Partial<Project> } = {}) {
-  const repo = makeRepo({ 'check.js': CHECK_JS });
+  const repo = makeRepo({ 'check.js': CHECK_JS, 'slow.js': SLOW_JS });
   const dataDir = tempDir('devlane-data-');
   const store = new StateStore();
   store.data.settings.maxConcurrent = opts.maxConcurrent ?? 2;
@@ -445,6 +456,67 @@ describe('丢弃', () => {
 });
 
 describe('测试命令', () => {
+  it('运行中能实时看到输出，并且可以停止：进程树被真正终止，状态为已停止', async () => {
+    const { manager } = setup([justFinish], { project: { testCommand: 'node slow.js' } });
+    const task = await manager.createTask(bug);
+    await waitFor(() => task.status === 'review');
+
+    await manager.runTests(task.id);
+    await waitFor(() => task.test?.output.includes('started') === true, '实时输出');
+    expect(task.test?.status).toBe('running');
+
+    const pid = Number(readFileSync(join(task.worktreePath, 'slow.pid'), 'utf8'));
+    expect(alive(pid)).toBe(true);
+
+    await manager.stopTests(task.id);
+    await waitFor(() => task.test?.status !== 'running', '测试结束');
+    expect(task.test?.status).toBe('stopped');
+    expect(task.test?.output).toContain('started');
+    expect(task.test?.output).toContain('已被你停止');
+    await waitFor(() => !alive(pid), '测试进程退出', 8000);
+  });
+
+  it('停止之后可以重新运行', async () => {
+    const { manager, store } = setup([justFinish], { project: { testCommand: 'node slow.js' } });
+    const task = await manager.createTask(bug);
+    await waitFor(() => task.status === 'review');
+    await manager.runTests(task.id);
+    await waitFor(() => task.test?.output.includes('started') === true);
+    await manager.stopTests(task.id);
+    await waitFor(() => task.test?.status === 'stopped');
+
+    store.data.projects[0]!.testCommand = 'node check.js';
+    await manager.runTests(task.id);
+    await waitFor(() => task.test?.status !== 'running');
+    expect(task.test?.status).toBe('failed');
+    expect(task.test?.output).toContain('checking');
+    expect(task.test?.output).not.toContain('已被你停止');
+  });
+
+  it('没有正在运行的测试时停止返回 409', async () => {
+    const { manager } = setup([justFinish]);
+    const task = await manager.createTask(bug);
+    await waitFor(() => task.status === 'review');
+    await expectHttp(manager.stopTests(task.id), 409, '没有正在运行');
+    await manager.runTests(task.id);
+    await waitFor(() => task.test?.status !== 'running');
+    await expectHttp(manager.stopTests(task.id), 409, '没有正在运行');
+  });
+
+  it('测试还在运行时丢弃任务：先终止测试进程，再干净地删除工作区', async () => {
+    const { manager } = setup([justFinish], { project: { testCommand: 'node slow.js' } });
+    const task = await manager.createTask(bug);
+    await waitFor(() => task.status === 'review');
+    await manager.runTests(task.id);
+    await waitFor(() => task.test?.output.includes('started') === true);
+    const pid = Number(readFileSync(join(task.worktreePath, 'slow.pid'), 'utf8'));
+
+    await manager.discard(task.id);
+    expect(task.status).toBe('discarded');
+    expect(existsSync(task.worktreePath)).toBe(false);
+    await waitFor(() => !alive(pid), '测试进程退出', 8000);
+  });
+
   it('在任务工作区里运行项目的测试命令：失败再通过', async () => {
     const { manager } = setup([justFinish]);
     const task = await manager.createTask(bug);

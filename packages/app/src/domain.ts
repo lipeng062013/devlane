@@ -39,7 +39,7 @@ export interface Denial {
 }
 
 export interface TestRun {
-  status: 'running' | 'passed' | 'failed';
+  status: 'running' | 'passed' | 'failed' | 'stopped';
   command: string;
   exitCode: number | null;
   output: string;

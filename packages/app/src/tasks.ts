@@ -92,7 +92,7 @@ export class TaskManager extends EventEmitter {
   private readonly clock: () => Date;
   private readonly runs = new Map<string, RunState>();
   private readonly busy = new Set<string>();
-  private readonly testProcs = new Map<string, { kill: () => void }>();
+  private readonly testProcs = new Map<string, { kill: () => void; stopped: boolean; exited: Promise<void> }>();
 
   constructor(deps: TaskManagerDeps) {
     super();
@@ -550,7 +550,12 @@ export class TaskManager extends EventEmitter {
         run.proc.kill();
         await Promise.race([run.proc.done, new Promise((r) => setTimeout(r, 10_000))]);
       }
-      this.testProcs.get(taskId)?.kill();
+      const testRun = this.testProcs.get(taskId);
+      if (testRun) {
+        testRun.kill();
+        // 等测试进程真正退出再删目录，否则 Windows 上目录会被占用
+        await Promise.race([testRun.exited, new Promise((r) => setTimeout(r, 10_000))]);
+      }
       const project = this.store.data.projects.find((p) => p.id === task.projectId);
       const repo = project?.path ?? '';
       try {
@@ -590,8 +595,16 @@ export class TaskManager extends EventEmitter {
       env: { ...process.env, CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' },
     });
     let output = '';
+    let lastPush = 0;
+    // 运行中把输出实时放进任务状态，让你能看到进度、决定要不要停；最多每 400ms 推送一次
     const onData = (chunk: Buffer): void => {
       output = (output + chunk.toString('utf8')).slice(-200_000);
+      const now = Date.now();
+      if (task.test?.status === 'running' && now - lastPush > 400) {
+        lastPush = now;
+        task.test = { ...task.test, output: output.replace(ANSI, '') };
+        this.notify('task', task.id);
+      }
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
@@ -599,13 +612,26 @@ export class TaskManager extends EventEmitter {
       output += `\n（超过 ${TEST_TIMEOUT_MS / 60000} 分钟，已终止）`;
       killTree(child);
     }, TEST_TIMEOUT_MS);
-    this.testProcs.set(taskId, { kill: () => killTree(child) });
+    let markExited: () => void = () => undefined;
+    const exited = new Promise<void>((resolve) => {
+      markExited = resolve;
+    });
+    const handle = {
+      stopped: false,
+      exited,
+      kill: (): void => {
+        handle.stopped = true;
+        killTree(child);
+      },
+    };
+    this.testProcs.set(taskId, handle);
 
     child.on('close', (code) => {
       clearTimeout(timer);
       this.testProcs.delete(taskId);
+      if (handle.stopped) output += '\n（已被你停止）';
       task.test = {
-        status: code === 0 ? 'passed' : 'failed',
+        status: handle.stopped ? 'stopped' : code === 0 ? 'passed' : 'failed',
         command,
         exitCode: code,
         output: output.replace(ANSI, ''),
@@ -613,6 +639,7 @@ export class TaskManager extends EventEmitter {
         durationMs: Date.now() - started,
       };
       this.touch(task);
+      markExited();
     });
     child.on('error', (err) => {
       clearTimeout(timer);
@@ -626,7 +653,17 @@ export class TaskManager extends EventEmitter {
         durationMs: Date.now() - started,
       };
       this.touch(task);
+      markExited();
     });
+    return task;
+  }
+
+  /** 停止正在运行的测试：终止整个进程树（包括测试命令派生的子进程）。 */
+  async stopTests(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    const handle = this.testProcs.get(taskId);
+    if (!handle || task.test?.status !== 'running') throw new HttpError(409, '没有正在运行的测试');
+    handle.kill();
     return task;
   }
 

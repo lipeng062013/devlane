@@ -74,6 +74,7 @@ export const api = {
   ignore: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/ignore`),
   stop: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/stop`),
   runTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test`),
+  stopTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test/stop`),
   commit: (id: string, message: string) => request<Task>('POST', `/api/tasks/${enc(id)}/commit`, { message }),
   openPr: (id: string, title: string, body: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body }),
   discard: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/discard`),

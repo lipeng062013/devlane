@@ -264,6 +264,20 @@ describe('任务流程（通过 HTTP）', () => {
     expect(agent.calls).toHaveLength(2);
   });
 
+  it('停止测试：没有运行中的测试返回 409，未知任务返回 404', async () => {
+    await setup();
+    await addProject();
+    const id = (await send('POST', '/api/tasks', { projectId: 'P1', kind: 'bug', title: 'x' })).json().id as string;
+    await waitStatus(id, 'review');
+    const none = await send('POST', `/api/tasks/${id}/test/stop`, {});
+    expect(none.statusCode).toBe(409);
+    expect(none.json().error).toContain('没有正在运行');
+    expect((await send('POST', '/api/tasks/T99/test/stop', {})).statusCode).toBe(404);
+    // 缺少请求头同样被拒绝
+    const raw = await app.inject({ method: 'POST', url: `/api/tasks/${id}/test/stop`, headers: { host: HOST } });
+    expect(raw.statusCode).toBe(403);
+  });
+
   it('追问与停止', async () => {
     const { agent } = await setup(new FakeAgent([fixSum]));
     await addProject();
