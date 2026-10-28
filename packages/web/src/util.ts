@@ -84,3 +84,17 @@ export function defaultCommitMessage(task: Task): string {
   const ref = task.jiraKey ? `${task.jiraKey} ` : '';
   return `${prefix}: ${ref}${task.title}`;
 }
+
+const SERVER_PATTERNS = [
+  /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(dev|start|serve|watch|preview)\b/i,
+  /\b(nuxt|nuxi|next|vite|astro|webpack-dev-server|ng)\s+(dev|serve|start|preview)\b/i,
+  /(^|\s)--watch(All)?\b/i,
+];
+
+/** 这条命令看起来像开发服务器或监听模式：它不会自己结束，不适合当「测试命令」。 */
+export function looksLikeDevServer(command: string): boolean {
+  return SERVER_PATTERNS.some((re) => re.test(command));
+}
+
+export const DEV_SERVER_HINT =
+  '这看起来是开发服务器或监听模式，不会自己结束，不适合当测试命令。请换成会自行结束的命令，例如 npm test、npm run typecheck、npm run lint。';

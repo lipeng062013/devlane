@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync, lstatSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { HttpError } from './domain';
 
@@ -182,11 +182,26 @@ export function isInside(parent: string, child: string): boolean {
 }
 
 /**
+ * 任务工作区的存放根目录。
+ * 默认在数据目录里；但在 Windows 上，如果项目和数据目录不在同一个盘符，就改放到项目旁边。
+ * 原因：工作区里的 node_modules 是指向主仓库的链接，跨盘符时，Nuxt 等工具算出的
+ * 「依赖文件相对工作区的路径」会变成 D:\... 这种绝对路径而不是 ..\...，随即报错。
+ */
+export function worktreesRootFor(projectPath: string, dataDir: string): string {
+  const fallback = join(dataDir, 'worktrees');
+  if (process.platform !== 'win32') return fallback;
+  const sameDrive = parse(resolve(projectPath)).root.toLowerCase() === parse(resolve(dataDir)).root.toLowerCase();
+  return sameDrive ? fallback : join(dirname(resolve(projectPath)), '.devlane-worktrees');
+}
+
+/**
  * 删除任务的 worktree 和分支。
  * 先摘除 node_modules 链接：git worktree remove 和递归删除有可能顺着链接删掉主仓库的依赖。
+ * allowedRoots 是允许删除的目录范围，防止误删 DevLane 工作区之外的东西。
  */
-export async function removeWorktree(repo: string, worktreePath: string, branch: string, worktreesRoot: string): Promise<void> {
-  if (!isInside(worktreesRoot, worktreePath)) {
+export async function removeWorktree(repo: string, worktreePath: string, branch: string, allowedRoots: string | string[]): Promise<void> {
+  const roots = Array.isArray(allowedRoots) ? allowedRoots : [allowedRoots];
+  if (!roots.some((root) => isInside(root, worktreePath))) {
     throw new GitError(`拒绝删除不在 DevLane 工作区内的目录：${worktreePath}`, '');
   }
   const nm = join(worktreePath, 'node_modules');

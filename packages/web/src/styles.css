@@ -137,6 +137,7 @@ label.check { display: flex; gap: 8px; align-items: flex-start; color: var(--tex
 .notice-inline { padding: 7px 10px; border-radius: 6px; font-size: 13px; background: var(--panel-2); margin: 6px 0; }
 .notice-inline.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 .notice-inline.ok { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.notice-inline.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 
 /* 任务列表 */
 .seg-filter { display: flex; gap: 4px; padding: 0 14px 8px; }

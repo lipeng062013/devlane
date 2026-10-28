@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
 import type { Project, Task } from '../types';
-import { formatDuration } from '../util';
+import { formatDuration, DEV_SERVER_HINT, looksLikeDevServer } from '../util';
 
 const CHIP = { passed: 'chip-ok', failed: 'chip-bad', running: 'chip-run', stopped: 'chip-warn' } as const;
 
@@ -68,6 +68,7 @@ export default function TestTab({ task, project }: { task: Task; project: Projec
         )}
       </div>
       <p className="muted small">在这个任务的工作区里运行，与 Claude 看到的代码相同。运行中可以随时停止，会连同它启动的子进程一起终止。</p>
+      {looksLikeDevServer(command) && <div className="notice-inline warn">{DEV_SERVER_HINT}</div>}
       {t?.output ? (
         <pre
           className="test-output"

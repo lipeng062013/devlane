@@ -13,6 +13,7 @@ import {
   isInside,
   linkNodeModules,
   removeWorktree,
+  worktreesRootFor,
 } from '../src/git';
 import { cleanupTemp, makeRepo, sh, tempDir, writeFiles } from './helpers';
 
@@ -247,5 +248,52 @@ describe('isInside', () => {
     expect(isInside('/a/b', '/a/b')).toBe(false);
     expect(isInside('/a/b', '/a/bc')).toBe(false);
     expect(isInside('/a/b', '/a/b/../c')).toBe(false);
+  });
+});
+
+describe('worktreesRootFor', () => {
+  const win = process.platform === 'win32';
+
+  it.runIf(win)('项目与数据目录同一盘符：放在数据目录里', () => {
+    expect(worktreesRootFor('C:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(join('C:\\Users\\me\\.devlane', 'worktrees'));
+    expect(worktreesRootFor('c:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(join('C:\\Users\\me\\.devlane', 'worktrees'));
+  });
+
+  it.runIf(win)('跨盘符：放在项目旁边，保证和 node_modules 链接目标同盘', () => {
+    expect(worktreesRootFor('D:\\house-responsive', 'C:\\Users\\me\\.devlane')).toBe('D:\\.devlane-worktrees');
+    expect(worktreesRootFor('D:\\work\\house-responsive', 'C:\\Users\\me\\.devlane')).toBe('D:\\work\\.devlane-worktrees');
+  });
+
+  it.runIf(win)('跨盘符时，算出的依赖相对路径以 .. 开头（Nuxt 会据此跳过，不会报错）', async () => {
+    const { relative } = await import('node:path');
+    const root = worktreesRootFor('D:\\house-responsive', 'C:\\Users\\me\\.devlane');
+    const rel = relative(join(root, 'house-responsive-T1'), 'D:\\house-responsive\\node_modules\\a.vue');
+    expect(rel.startsWith('..')).toBe(true);
+  });
+
+  it.runIf(!win)('非 Windows：始终放在数据目录里', () => {
+    expect(worktreesRootFor('/mnt/d/app', '/home/me/.devlane')).toBe(join('/home/me/.devlane', 'worktrees'));
+  });
+});
+
+describe('removeWorktree 的允许范围', () => {
+  it('旧位置和新位置的任务都能清理', async () => {
+    const repo = makeRepo();
+    const oldRoot = tempDir('devlane-old-');
+    const newRoot = tempDir('devlane-new-');
+    const a = join(oldRoot, 'T1');
+    const b = join(newRoot, 'T2');
+    await addWorktree(repo, a, 'devlane/fix-a-1', 'main');
+    await addWorktree(repo, b, 'devlane/fix-b-2', 'main');
+    await removeWorktree(repo, a, 'devlane/fix-a-1', [oldRoot, newRoot]);
+    await removeWorktree(repo, b, 'devlane/fix-b-2', [oldRoot, newRoot]);
+    expect(existsSync(a)).toBe(false);
+    expect(existsSync(b)).toBe(false);
+  });
+
+  it('不在任何允许范围内仍然拒绝', async () => {
+    const repo = makeRepo();
+    await expect(removeWorktree(repo, repo, 'devlane/x', [tempDir(), tempDir()])).rejects.toThrow('拒绝删除');
+    expect(existsSync(join(repo, 'sum.js'))).toBe(true);
   });
 });

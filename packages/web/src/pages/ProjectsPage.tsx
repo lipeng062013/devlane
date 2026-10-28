@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
 import type { Project, RepoInfo } from '../types';
+import { DEV_SERVER_HINT, looksLikeDevServer } from '../util';
 
 function ProjectForm({
   initial,
@@ -60,6 +61,7 @@ function ProjectForm({
       <label>
         测试命令（改完后用它验证，也允许 Claude 运行）
         <input value={testCommand} onChange={(e) => setTestCommand(e.target.value)} placeholder="例如 npm test、pytest -q、go test ./..." className="mono" />
+        {looksLikeDevServer(testCommand) && <div className="notice-inline warn">{DEV_SERVER_HINT}</div>}
       </label>
       <label>
         额外允许 Claude 运行的命令（每行一条，不含 && | ; 等符号）

@@ -34,6 +34,7 @@ import {
   linkNodeModules,
   pushBranch,
   removeWorktree,
+  worktreesRootFor,
 } from './git';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
 import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
@@ -197,16 +198,25 @@ export class TaskManager extends EventEmitter {
     const id = `T${n}`;
     const slug = slugify(jiraKey ?? title);
     const branch = `devlane/${input.kind === 'bug' ? 'fix' : 'feat'}-${slug}-${randomBytes(2).toString('hex')}`;
-    const worktreePath = join(this.worktreesRoot, `${slugify(project.name)}-${id}`);
+    const dirName = `${slugify(project.name)}-${id}`;
 
+    // 工作区放在和项目同一个盘符上（见 worktreesRootFor）；项目旁边不可写时退回数据目录
+    let worktreePath = join(worktreesRootFor(info.root, this.dataDir), dirName);
+    const notes: string[] = [];
     let baseSha: string;
     try {
       baseSha = await addWorktree(info.root, worktreePath, branch, base);
     } catch (err) {
-      throw new HttpError(400, `创建工作区失败：${(err as Error).message}`);
+      const fallbackPath = join(this.worktreesRoot, dirName);
+      if (fallbackPath === worktreePath) throw new HttpError(400, `创建工作区失败：${(err as Error).message}`);
+      try {
+        baseSha = await addWorktree(info.root, fallbackPath, branch, base);
+        worktreePath = fallbackPath;
+        notes.push(`无法在项目旁边创建工作区（${(err as Error).message}），已改放到 ${this.worktreesRoot}。如果项目用了跨盘符的 node_modules 链接，Nuxt 等工具可能报路径错误，建议关闭项目的「链接 node_modules」`);
+      } catch (err2) {
+        throw new HttpError(400, `创建工作区失败：${(err2 as Error).message}`);
+      }
     }
-
-    const notes: string[] = [];
     if (project.linkNodeModules) {
       const note = await linkNodeModules(info.root, worktreePath);
       if (note) notes.push(note);
@@ -558,8 +568,11 @@ export class TaskManager extends EventEmitter {
       }
       const project = this.store.data.projects.find((p) => p.id === task.projectId);
       const repo = project?.path ?? '';
+      // 旧任务可能在数据目录里，新任务在项目旁边，两处都允许清理
+      const roots = [this.worktreesRoot];
+      if (project) roots.push(worktreesRootFor(project.path, this.dataDir));
       try {
-        await removeWorktree(repo || this.dataDir, task.worktreePath, task.branch, this.worktreesRoot);
+        await removeWorktree(repo || this.dataDir, task.worktreePath, task.branch, roots);
       } catch (err) {
         throw new HttpError(500, `清理工作区失败：${(err as Error).message}`);
       }
