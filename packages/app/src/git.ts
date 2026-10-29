@@ -326,3 +326,11 @@ export function safeJoin(root: string, ...parts: string[]): string {
   }
   return full;
 }
+
+export {
+  parsePrNumber,
+  fetchPrSnapshot,
+  summarizeCi,
+  summarizeMerge,
+  type GhExecFile,
+} from './pr-check';

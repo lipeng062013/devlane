@@ -19,6 +19,7 @@ import {
   normalizeAgentProvider,
   type NewTimelineItem,
   type Project,
+  type PrCheckSnapshot,
   type Task,
   type TaskKind,
   type TimelineItem,
@@ -29,8 +30,10 @@ import {
   changes,
   commitAll,
   createPullRequest,
+  fetchPrSnapshot,
   ghVersion,
   git,
+  parsePrNumber,
   hasUncommitted,
   inspectRepo,
   linkNodeModules,
@@ -54,6 +57,7 @@ export interface TaskManagerDeps {
   now?: () => Date;
   /** 可注入 FakeJira；默认真实 JiraClient（生产路径）。验收禁止真站。 */
   jiraFactory?: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
+  prSnapshotFetcher?: (prUrl: string) => Promise<PrCheckSnapshot>;
 }
 
 export interface CreateTaskInput {
@@ -99,6 +103,7 @@ export class TaskManager extends EventEmitter {
   private readonly store: StateStore;
   private readonly getAgent: (provider: AgentProvider) => AgentAdapter;
   private readonly makeJira: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
+  private readonly prSnapshotFetcher?: (prUrl: string) => Promise<PrCheckSnapshot>;
   private readonly dataDir: string;
   private readonly clock: () => Date;
   private readonly runs = new Map<string, RunState>();
@@ -113,6 +118,7 @@ export class TaskManager extends EventEmitter {
       return deps.agent;
     });
     this.makeJira = deps.jiraFactory ?? ((cfg) => new JiraClient(cfg));
+    this.prSnapshotFetcher = deps.prSnapshotFetcher;
     this.dataDir = deps.dataDir;
     this.clock = deps.now ?? (() => new Date());
     this.timeline = new TimelineLog(deps.dataDir);
@@ -574,6 +580,8 @@ export class TaskManager extends EventEmitter {
         throw err;
       }
       task.prUrl = url;
+      const n = parsePrNumber(url);
+      if (n) task.prNumber = n;
       task.status = 'pr_opened';
       this.note(task, `已创建 PR：${url}`);
       this.touch(task);
@@ -583,6 +591,50 @@ export class TaskManager extends EventEmitter {
     });
   }
 
+
+
+  async refreshPrCheck(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (!task.prUrl) throw new HttpError(400, '还没有 PR');
+    return this.exclusive(taskId, async () => {
+      try {
+        let snap: PrCheckSnapshot;
+        if (this.prSnapshotFetcher) {
+          snap = await this.prSnapshotFetcher(task.prUrl!);
+        } else {
+          if (!(await ghVersion())) {
+            throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
+          }
+          snap = await fetchPrSnapshot(task.prUrl!);
+        }
+        if (snap.prNumber) task.prNumber = snap.prNumber;
+        task.prCheck = {
+          refreshedAt: snap.refreshedAt,
+          prNumber: snap.prNumber ?? task.prNumber ?? parsePrNumber(task.prUrl!),
+          ci: snap.ci,
+          merge: snap.merge,
+          mergeDetail: snap.mergeDetail,
+        };
+        this.note(task, `已刷新 PR 状态：CI ${snap.ci}，合并 ${snap.merge}`);
+        this.touch(task);
+        return task;
+      } catch (err) {
+        const msg = err instanceof HttpError ? err.message : (err as Error).message;
+        const prev = task.prCheck;
+        task.prCheck = {
+          refreshedAt: prev?.refreshedAt ?? this.nowIso(),
+          prNumber: prev?.prNumber ?? task.prNumber ?? parsePrNumber(task.prUrl!),
+          ci: prev?.ci ?? 'unknown',
+          merge: prev?.merge ?? 'unknown',
+          mergeDetail: prev?.mergeDetail,
+          lastError: msg,
+        };
+        this.note(task, `刷新 PR 状态失败：${msg}`, 'error');
+        this.touch(task);
+        throw err instanceof HttpError ? err : new HttpError(502, msg);
+      }
+    });
+  }
 
   /** Auto Jira comment: only pr_opened + writeEnabled + jiraKey; same fingerprint skips. Errors note only. */
   async maybeAutoJiraComment(task: Task): Promise<void> {

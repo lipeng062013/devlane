@@ -1,5 +1,15 @@
 export type AgentProvider = 'claude' | 'codex' | 'grok-build';
 
+export type PrCheckCi = 'success' | 'pending' | 'failure' | 'none' | 'unknown';
+export type PrCheckMerge = 'merged' | 'mergeable' | 'blocked' | 'closed' | 'unknown';
+export interface PrCheckSnapshot {
+  refreshedAt: string;
+  prNumber?: number;
+  ci: PrCheckCi;
+  merge: PrCheckMerge;
+  mergeDetail?: string;
+  lastError?: string;
+}
 export type TaskKind = 'bug' | 'feature';
 
 export type TaskStatus =
@@ -62,6 +72,8 @@ export interface Task {
   lastError?: string;
   commitSha?: string;
   prUrl?: string;
+  prNumber?: number;
+  prCheck?: PrCheckSnapshot;
   jiraWrite?: { lastFingerprint?: string; lastError?: string; lastAt?: string };
   test?: TestRun;
   notes: string[];
