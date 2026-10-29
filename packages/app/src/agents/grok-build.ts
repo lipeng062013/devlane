@@ -1,4 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import {
   type AgentAdapter,
   type AgentMessage,
@@ -12,7 +15,7 @@ import { wireLineTextProcess } from './codex';
 
 /**
  * Grok Build 第一刀适配器。
- * 本机实名二进制是 `grok`（例：C:\Users\…\.grok\bin\grok.exe），不是 grok-build。
+ * 本机实名二进制是 `grok`（例：C:\\Users\\…\\.grok\\bin\\grok.exe），不是 grok-build。
  * resolve 常见名兜底；未确认协议前以 settings.grokBuildPath 为准。
  */
 const GROK_NAMES = process.platform === 'win32'
@@ -23,9 +26,31 @@ export function resolveGrokBuild(custom?: string): ClaudeBinary | null {
   return resolveBinary(GROK_NAMES, custom);
 }
 
+/** 无头单轮参数。必须用 -p/--single 或 --prompt-file；裸 [PROMPT]/- 会进 TUI。 */
+export function buildGrokArgs(promptFile: string): string[] {
+  return [
+    '--prompt-file',
+    promptFile,
+    '--output-format',
+    'plain',
+    '--always-approve',
+    '--permission-mode',
+    'dontAsk',
+  ];
+}
+
+function writePromptFile(opts: AgentStart): string {
+  const dir = opts.settingsPath
+    ? dirname(opts.settingsPath)
+    : mkdtempSync(join(tmpdir(), 'devlane-grok-'));
+  const file = join(dir, 'grok-prompt.txt');
+  writeFileSync(file, opts.prompt, 'utf8');
+  return file;
+}
+
 /**
- * 启动：`grok --output-format plain --always-approve --permission-mode dontAsk -`
- * prompt 走 stdin。参数据本机 `grok --help` 猜测，协议细节未完全确认。
+ * 启动：`grok --prompt-file <path> --output-format plain --always-approve --permission-mode dontAsk`
+ * 本机验证：`grok -p 'ping' --output-format plain --permission-mode dontAsk --always-approve` 可正常退出。
  * 不套 Claude settings / 权限模型。
  */
 export class GrokBuildAgent implements AgentAdapter {
@@ -42,7 +67,8 @@ export class GrokBuildAgent implements AgentAdapter {
       };
     }
 
-    const rawArgs = ['--output-format', 'plain', '--always-approve', '--permission-mode', 'dontAsk', '-'];
+    const promptFile = writePromptFile(opts);
+    const rawArgs = buildGrokArgs(promptFile);
     const args = bin.shell ? rawArgs.map(quoteShellArg) : rawArgs;
     const command = bin.shell ? quoteShellArg(bin.command) : bin.command;
 
@@ -51,10 +77,8 @@ export class GrokBuildAgent implements AgentAdapter {
       shell: bin.shell,
       windowsHide: true,
       detached: process.platform !== 'win32',
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdin.on('error', () => undefined);
-    child.stdin.end(opts.prompt);
 
     return wireLineTextProcess(child, onMessage);
   }

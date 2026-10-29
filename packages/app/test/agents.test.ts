@@ -106,3 +106,69 @@ describe('environment 三家互不拖垮', () => {
     await app.close();
   });
 });
+
+
+describe('buildGrokArgs headless', () => {
+  it('用 --prompt-file，不用裸 - / TUI PROMPT', async () => {
+    const { buildGrokArgs } = await import('../src/agents/grok-build');
+    const args = buildGrokArgs('C:\\tmp\\prompt.txt');
+    expect(args).toContain('--prompt-file');
+    expect(args).toContain('C:\\tmp\\prompt.txt');
+    expect(args).toContain('--output-format');
+    expect(args).toContain('plain');
+    expect(args).not.toContain('-');
+    expect(args[0]).not.toBe('-');
+  });
+});
+
+describe('startRun 按 provider 选型', () => {
+  it('codex 任务调用 getAgent(codex) 而非 claude', async () => {
+    const repo = makeRepo();
+    const dataDir = tempDir('devlane-data-');
+    const store = new StateStore();
+    store.data.projects.push({
+      id: 'P1',
+      name: 'demo',
+      path: repo,
+      baseBranch: 'main',
+      testCommand: '',
+      extraAllowed: [],
+      linkNodeModules: false,
+      createdAt: new Date().toISOString(),
+    });
+    store.save();
+
+    const seen: string[] = [];
+    const make = (name: string) => {
+      const a = new FakeAgent([justFinish]);
+      const orig = a.start.bind(a);
+      a.start = (opts, onMessage) => {
+        seen.push(name);
+        return orig(opts, onMessage);
+      };
+      return a;
+    };
+    const agents = {
+      claude: make('claude'),
+      codex: make('codex'),
+      'grok-build': make('grok-build'),
+    } as const;
+    const manager = new TaskManager({
+      store,
+      getAgent: (p) => agents[p],
+      dataDir,
+    });
+    const task = await manager.createTask({
+      projectId: 'P1',
+      kind: 'bug',
+      title: '选型',
+      agentProvider: 'codex',
+    });
+    // pump 会 startRun
+    manager.pump();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(seen).toContain('codex');
+    expect(seen).not.toContain('claude');
+    expect(normalizeAgentProvider(task.agentProvider)).toBe('codex');
+  });
+});
