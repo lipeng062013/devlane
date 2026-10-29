@@ -126,6 +126,8 @@ export interface Settings {
   maxBudgetUsd: number;
   maxConcurrent: number;
   editorCommand: string;
+  /** Agent 初始提示模板（按 kind）；空/未配置回落 prompt.ts DEFAULT_* */
+  promptTemplates?: { bug?: string; feature?: string };
   jira?: JiraSettings;
 }
 

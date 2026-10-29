@@ -286,7 +286,7 @@ export class TaskManager extends EventEmitter {
       createdAt: now,
       updatedAt: now,
     };
-    task.pendingPrompt = buildInitialPrompt(project, task);
+    task.pendingPrompt = buildInitialPrompt(project, task, this.store.data.settings.promptTemplates);
     this.store.data.tasks.push(task);
     this.note(task, `已创建独立工作区：${worktreePath}（分支 ${branch}，基线 ${base} @ ${baseSha.slice(0, 8)}）`);
     for (const n2 of notes) this.note(task, n2);

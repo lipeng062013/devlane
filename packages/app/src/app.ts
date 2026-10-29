@@ -203,6 +203,19 @@ app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) =
   // ---------- 设置 ----------
   app.put('/api/settings', async (req) => {
     const b = obj(req.body);
+    const hasPromptTemplates = Object.prototype.hasOwnProperty.call(b, 'promptTemplates');
+    const ptRaw = b.promptTemplates;
+    const promptTemplates = hasPromptTemplates
+      ? ptRaw && typeof ptRaw === 'object' && !Array.isArray(ptRaw)
+        ? {
+            bug: typeof (ptRaw as { bug?: unknown }).bug === 'string' ? (ptRaw as { bug: string }).bug : '',
+            feature:
+              typeof (ptRaw as { feature?: unknown }).feature === 'string'
+                ? (ptRaw as { feature: string }).feature
+                : '',
+          }
+        : { bug: '', feature: '' }
+      : undefined;
     updateSettings(store, {
       claudePath: str(b.claudePath),
       codexPath: str(b.codexPath),
@@ -211,6 +224,7 @@ app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) =
       maxBudgetUsd: b.maxBudgetUsd === undefined ? undefined : Number(b.maxBudgetUsd),
       maxConcurrent: b.maxConcurrent === undefined ? undefined : Number(b.maxConcurrent),
       editorCommand: str(b.editorCommand),
+      ...(hasPromptTemplates ? { promptTemplates } : {}),
     });
     manager.emit('change', { type: 'settings', id: '' } satisfies Change);
     manager.pump();

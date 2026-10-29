@@ -83,6 +83,27 @@ export function removeProject(store: StateStore, id: string): void {
 
 // ---------- 设置 ----------
 
+
+const PROMPT_TEMPLATE_MAX = 20_000;
+
+function normalizePromptTemplate(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  if (!t) return undefined;
+  return t.length > PROMPT_TEMPLATE_MAX ? t.slice(0, PROMPT_TEMPLATE_MAX) : t;
+}
+
+function normalizePromptTemplates(
+  input: { bug?: string; feature?: string } | undefined,
+): { bug?: string; feature?: string } | undefined {
+  if (input === undefined) return undefined;
+  const bug = normalizePromptTemplate(input.bug);
+  const feature = normalizePromptTemplate(input.feature);
+  if (!bug && !feature) return undefined;
+  return { ...(bug ? { bug } : {}), ...(feature ? { feature } : {}) };
+}
+
 export interface SettingsInput {
   claudePath?: string;
   codexPath?: string;
@@ -91,6 +112,7 @@ export interface SettingsInput {
   maxBudgetUsd?: number;
   maxConcurrent?: number;
   editorCommand?: string;
+  promptTemplates?: { bug?: string; feature?: string };
 }
 
 export function updateSettings(store: StateStore, input: SettingsInput): Settings {
@@ -117,6 +139,11 @@ export function updateSettings(store: StateStore, input: SettingsInput): Setting
     const v = input.editorCommand.trim();
     if (!/^[\w.-]+$/.test(v)) throw new HttpError(400, '编辑器命令只能是一个程序名，例如 code');
     s.editorCommand = v;
+  }
+  if (input.promptTemplates !== undefined) {
+    const next = normalizePromptTemplates(input.promptTemplates);
+    if (next) s.promptTemplates = next;
+    else delete s.promptTemplates;
   }
   store.save();
   return s;

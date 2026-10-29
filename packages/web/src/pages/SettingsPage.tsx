@@ -167,6 +167,71 @@ function GeneralSettings() {
   );
 }
 
+
+function PromptTemplateSettings() {
+  const { state, act, notify } = useApp();
+  const current = state.settings.promptTemplates;
+  const [bug, setBug] = useState(current?.bug ?? '');
+  const [feature, setFeature] = useState(current?.feature ?? '');
+
+  return (
+    <section className="card">
+      <h3>Agent 提示模板</h3>
+      <p className="muted small">
+        按任务类型（缺陷 / 需求）自定义发给 Agent 的<strong>初始提示</strong>。留空则使用内置默认。支持占位符{' '}
+        <span className="mono">{'{{title}}'}</span>、<span className="mono">{'{{description}}'}</span>、
+        <span className="mono">{'{{jiraKey}}'}</span>、<span className="mono">{'{{testCommand}}'}</span>、
+        <span className="mono">{'{{projectName}}'}</span>、<span className="mono">{'{{branch}}'}</span>、
+        <span className="mono">{'{{baseBranch}}'}</span>、<span className="mono">{'{{kind}}'}</span>
+        。与 Jira 字段独立，不回写。未知占位符原样保留。
+      </p>
+      <label>
+        缺陷（bug）模板
+        <textarea
+          value={bug}
+          onChange={(e) => setBug(e.target.value)}
+          rows={10}
+          className="mono"
+          placeholder="留空 = 使用内置默认缺陷提示"
+        />
+      </label>
+      <label>
+        需求（feature）模板
+        <textarea
+          value={feature}
+          onChange={(e) => setFeature(e.target.value)}
+          rows={10}
+          className="mono"
+          placeholder="留空 = 使用内置默认需求提示"
+        />
+      </label>
+      <div className="form-actions">
+        <button
+          className="btn"
+          type="button"
+          onClick={() => {
+            setBug('');
+            setFeature('');
+          }}
+        >
+          恢复默认
+        </button>
+        <span className="spacer" />
+        <button
+          className="btn btn-primary"
+          onClick={() =>
+            void act(() => api.saveSettings({ promptTemplates: { bug, feature } })).then(
+              (r) => r && notify('提示模板已保存'),
+            )
+          }
+        >
+          保存
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const { env, refreshEnv } = useApp();
   return (
@@ -199,6 +264,7 @@ export default function SettingsPage() {
         </ul>
       </section>
       <GeneralSettings />
+      <PromptTemplateSettings />
       <JiraSettings />
     </div>
   );
