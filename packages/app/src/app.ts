@@ -27,6 +27,7 @@ export interface AppOptions {
   port: number;
   webDir?: string;
   jiraFactory?: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
+  prSnapshotFetcher?: (prUrl: string) => Promise<import('./domain').PrCheckSnapshot>;
   extraOrigins?: string[];
   logger?: boolean;
 }
@@ -175,11 +176,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const b = obj(req.body);
     return manager.openPullRequest(req.params.id, { title: String(b.title ?? ''), body: String(b.body ?? '') });
   });
-
-    app.post<{ Params: { id: string } }>('/api/tasks/:id/jira-comment', async (req) => {
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/jira-comment', async (req) => {
     const force = Boolean(obj(req.body).force);
     return manager.writeJiraComment(req.params.id, { force });
   });
+
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/pr-check', async (req) => manager.refreshPrCheck(req.params.id));
+
 
 app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
     manager.openEditor(req.params.id);

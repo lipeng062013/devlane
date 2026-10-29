@@ -1,8 +1,35 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { Task } from '../types';
+import type { PrCheckCi, PrCheckMerge, Task } from '../types';
 import { IDLE_STATUSES, defaultCommitMessage } from '../util';
+
+function ciLabel(ci: PrCheckCi): string {
+  switch (ci) {
+    case 'success': return "CI 通过";
+    case 'pending': return "CI 进行中";
+    case 'failure': return "CI 失败";
+    case 'none': return "无检查";
+    default: return "CI 未知";
+  }
+}
+function ciClass(ci: PrCheckCi): string {
+  switch (ci) {
+    case 'success': return 'notice-inline ok';
+    case 'pending': return 'notice-inline warn';
+    case 'failure': return 'notice-inline bad';
+    default: return 'notice-inline';
+  }
+}
+function mergeLabel(merge: PrCheckMerge, detail?: string): string {
+  switch (merge) {
+    case 'merged': return "已合并";
+    case 'mergeable': return "可合并";
+    case 'closed': return "已关闭";
+    case 'blocked': return detail ? "不可合并：" + detail : "不可合并";
+    default: return "合并态未知";
+  }
+}
 
 export default function DeliverTab({ task }: { task: Task }) {
   const { act, env, notify } = useApp();
@@ -10,6 +37,7 @@ export default function DeliverTab({ task }: { task: Task }) {
   const [prTitle, setPrTitle] = useState(defaultCommitMessage(task));
   const [prBody, setPrBody] = useState(task.jiraKey ? `Jira: ${task.jiraKey}\n\n${task.description}`.trim() : task.description);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     setMessage(defaultCommitMessage(task));
@@ -20,6 +48,17 @@ export default function DeliverTab({ task }: { task: Task }) {
 
   const idle = IDLE_STATUSES.includes(task.status);
   const committed = Boolean(task.commitSha);
+  const ghMissing = Boolean(env && !env.gh);
+
+  
+  async function refreshPr(): Promise<void> {
+    setRefreshing(true);
+    const r = await act(() => api.refreshPrCheck(task.id));
+    setRefreshing(false);
+    if (r?.prCheck && !r.prCheck.lastError) {
+      notify("已刷新: " + ciLabel(r.prCheck.ci) + ' / ' + mergeLabel(r.prCheck.merge, r.prCheck.mergeDetail));
+    }
+  }
 
   async function openPr(): Promise<void> {
     setBusy(true);
@@ -68,6 +107,33 @@ export default function DeliverTab({ task }: { task: Task }) {
           </>
         )}
       </section>
+
+      
+      {task.prUrl && (
+        <section>
+          <h3>3. CI / 合并态</h3>
+          <p className="muted small">只读 gh pr view; FakeGh/mock 验收</p>
+          {task.prCheck ? (
+            <>
+              <div className={ciClass(task.prCheck.ci)}>
+                <span className={task.prCheck.ci === 'success' ? 'ok-dot' : task.prCheck.ci === 'failure' ? 'bad-dot' : 'warn-dot'} />{' '}
+                {ciLabel(task.prCheck.ci)}{' / '}{mergeLabel(task.prCheck.merge, task.prCheck.mergeDetail)}
+              </div>
+              <p className="muted small">刷新于 {new Date(task.prCheck.refreshedAt).toLocaleString()}{task.prCheck.prNumber != null && <> ? PR #<span className="mono">{task.prCheck.prNumber}</span></>}</p>
+            </>
+          ) : (
+            <p className="muted small">尚未刷新</p>
+          )}
+          {task.prCheck?.lastError && <div className="notice-inline bad">{task.prCheck.lastError}</div>}
+          {ghMissing && <p className="muted small"><b className="bad-text">未检测到 gh</b></p>}
+          <div className="form-actions">
+            <span className="spacer" />
+            <button className="btn" disabled={refreshing || ghMissing || task.status === 'discarded'} onClick={() => void refreshPr()}>
+              {refreshing ? "刷新中..." : "刷新状态"}
+            </button>
+          </div>
+        </section>
+      )}
 
       {task.jiraKey && (
         <section>

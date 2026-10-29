@@ -77,6 +77,7 @@ export const api = {
   stopTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test/stop`),
   commit: (id: string, message: string) => request<Task>('POST', `/api/tasks/${enc(id)}/commit`, { message }),
   openPr: (id: string, title: string, body: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body }),
+  refreshPrCheck: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr-check`),
   jiraComment: (id: string, force = true) => request<Task>('POST', `/api/tasks/${enc(id)}/jira-comment`, { force }),
   discard: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/discard`),
   openEditor: (id: string) => request<{ ok: true }>('POST', `/api/tasks/${enc(id)}/open-editor`),

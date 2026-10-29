@@ -67,7 +67,9 @@ let manager: TaskManager;
 let jira: FakeJira;
 let factoryCfg: { baseUrl: string; email: string; apiToken: string } | undefined;
 
-async function setup(agent = new FakeAgent([fixSum])) {
+type PrSnap = import('../src/domain').PrCheckSnapshot;
+
+async function setup(agent = new FakeAgent([fixSum]), opts: { prSnapshotFetcher?: (prUrl: string) => Promise<PrSnap> } = {}) {
   repo = makeRepo();
   store = new StateStore();
   jira = new FakeJira();
@@ -76,13 +78,14 @@ async function setup(agent = new FakeAgent([fixSum])) {
     factoryCfg = cfg;
     return jira;
   };
-  manager = new TaskManager({ store, agent, dataDir: tempDir('devlane-data-'), jiraFactory });
+  manager = new TaskManager({ store, agent, dataDir: tempDir('devlane-data-'), jiraFactory, prSnapshotFetcher: opts.prSnapshotFetcher });
   app = buildApp({
     store,
     manager,
     agent,
     port: PORT,
     jiraFactory,
+    prSnapshotFetcher: opts.prSnapshotFetcher,
   });
   await app.ready();
   return { agent, manager };
@@ -556,3 +559,100 @@ describe('Jira 评论回写（全 mock / FakeJira，禁止真站）', () => {
     // Token must never appear in public JSON (AC7 / T8)
   });
 });
+
+
+describe('CI / merge FakeGh (mock only)', () => {
+  function fakeOk(overrides: Partial<PrSnap> = {}): PrSnap {
+    return { refreshedAt: new Date().toISOString(), prNumber: 42, ci: 'success', merge: 'mergeable', ...overrides };
+  }
+  async function makeTask() {
+    await addProject();
+    const res = await send('POST', '/api/tasks', { projectId: 'P1', kind: 'bug', title: 'pr-check', description: 'd' });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().id as string;
+  }
+  function simulatePr(id: string, prUrl = 'https://github.com/o/r/pull/42') {
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    task.commitSha = 'abc1234';
+    task.prUrl = prUrl;
+    task.status = 'pr_opened';
+    store.save();
+    return task;
+  }
+
+  it('T1 success+mergeable', async () => {
+    const calls: string[] = [];
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async (url) => { calls.push(url); return fakeOk({ refreshedAt: '2026-10-29T01:00:00.000Z' }); } });
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().prCheck).toMatchObject({ ci: 'success', merge: 'mergeable', prNumber: 42 });
+    expect(calls).toEqual(['https://github.com/o/r/pull/42']);
+  });
+
+  it('T2 failure not success', async () => {
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => fakeOk({ ci: 'failure', merge: 'blocked', mergeDetail: 'x' }) });
+    const id = await makeTask();
+    simulatePr(id);
+    expect((await send('POST', `/api/tasks/${id}/pr-check`)).json().prCheck.ci).toBe('failure');
+  });
+
+  it('T3 merged; no merge write path', async () => {
+    const seen: string[] = [];
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async (url) => { seen.push(url); return fakeOk({ ci: 'none', merge: 'merged' }); } });
+    const id = await makeTask();
+    simulatePr(id);
+    expect((await send('POST', `/api/tasks/${id}/pr-check`)).json().prCheck.merge).toBe('merged');
+    expect(seen.join(' ')).not.toMatch(/\bmerge\b/i);
+  });
+
+  it('T4 no prUrl -> 400; zero calls', async () => {
+    let calls = 0;
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { calls++; return fakeOk(); } });
+    const id = await makeTask();
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('PR');
+    expect(calls).toBe(0);
+  });
+
+  it('T5 fail keeps status/prUrl', async () => {
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { throw new HttpError(502, 'refresh PR status failed: authentication required'); } });
+    const id = await makeTask();
+    simulatePr(id, 'https://github.com/o/r/pull/7');
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode).toBe(502);
+    const after = store.data.tasks.find((t) => t.id === id)!;
+    expect(after.status).toBe('pr_opened');
+    expect(after.prUrl).toBe('https://github.com/o/r/pull/7');
+    expect(after.prCheck?.lastError).toContain('authentication required');
+  });
+
+  it('T6 two refreshes update refreshedAt', async () => {
+    let n = 0;
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { n++; return fakeOk({ refreshedAt: `2026-10-29T0${n}:00:00.000Z`, ci: n === 1 ? 'pending' : 'success' }); } });
+    const id = await makeTask();
+    simulatePr(id);
+    const r1 = await send('POST', `/api/tasks/${id}/pr-check`);
+    const r2 = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(r1.json().prCheck.refreshedAt).toBe('2026-10-29T01:00:00.000Z');
+    expect(r2.json().prCheck.refreshedAt).toBe('2026-10-29T02:00:00.000Z');
+    expect(n).toBe(2);
+  });
+
+  it('T7 keep old ci/merge on failure', async () => {
+    let fail = false;
+    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { if (fail) throw new HttpError(502, 'network'); return fakeOk({ ci: 'success', merge: 'mergeable', refreshedAt: '2026-10-29T03:00:00.000Z' }); } });
+    const id = await makeTask();
+    simulatePr(id);
+    expect((await send('POST', `/api/tasks/${id}/pr-check`)).statusCode).toBe(200);
+    fail = true;
+    expect((await send('POST', `/api/tasks/${id}/pr-check`)).statusCode).toBe(502);
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    expect(task.prCheck?.ci).toBe('success');
+    expect(task.prCheck?.merge).toBe('mergeable');
+    expect(task.prCheck?.lastError).toContain('network');
+  });
+});
+

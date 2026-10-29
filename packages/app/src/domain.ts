@@ -4,6 +4,16 @@ export function normalizeAgentProvider(v: unknown): AgentProvider {
   return v === 'codex' || v === 'grok-build' || v === 'claude' ? v : 'claude';
 }
 
+export type PrCheckCi = 'success' | 'pending' | 'failure' | 'none' | 'unknown';
+export type PrCheckMerge = 'merged' | 'mergeable' | 'blocked' | 'closed' | 'unknown';
+export interface PrCheckSnapshot {
+  refreshedAt: string;
+  prNumber?: number;
+  ci: PrCheckCi;
+  merge: PrCheckMerge;
+  mergeDetail?: string;
+  lastError?: string;
+}
 export type TaskKind = 'bug' | 'feature';
 
 export type TaskStatus =
@@ -82,6 +92,8 @@ export interface Task {
   lastError?: string;
   commitSha?: string;
   prUrl?: string;
+  prNumber?: number;
+  prCheck?: PrCheckSnapshot;
   /** Jira 评论回写状态（本刀仅评论，无 transition） */
   jiraWrite?: { lastFingerprint?: string; lastError?: string; lastAt?: string };
   test?: TestRun;
