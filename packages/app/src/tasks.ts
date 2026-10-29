@@ -58,7 +58,17 @@ export interface TaskManagerDeps {
   /** 可注入 FakeJira；默认真实 JiraClient（生产路径）。验收禁止真站。 */
   jiraFactory?: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
   prSnapshotFetcher?: (prUrl: string) => Promise<PrCheckSnapshot>;
+  /** 测试可注入 FakeGh；默认真实 ghVersion / push / createPullRequest。验收禁真仓破坏。 */
+  openPrDeps?: {
+    ghVersion?: () => Promise<string | null>;
+    pushBranch?: (worktreePath: string, branch: string) => Promise<void>;
+    createPullRequest?: (
+      worktreePath: string,
+      opts: { base: string; head: string; title: string; body: string },
+    ) => Promise<string>;
+  };
 }
+
 
 export interface CreateTaskInput {
   projectId: string;
@@ -104,6 +114,7 @@ export class TaskManager extends EventEmitter {
   private readonly getAgent: (provider: AgentProvider) => AgentAdapter;
   private readonly makeJira: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
   private readonly prSnapshotFetcher?: (prUrl: string) => Promise<PrCheckSnapshot>;
+  private readonly openPrDeps?: TaskManagerDeps['openPrDeps'];
   private readonly dataDir: string;
   private readonly clock: () => Date;
   private readonly runs = new Map<string, RunState>();
@@ -119,6 +130,7 @@ export class TaskManager extends EventEmitter {
     });
     this.makeJira = deps.jiraFactory ?? ((cfg) => new JiraClient(cfg));
     this.prSnapshotFetcher = deps.prSnapshotFetcher;
+    this.openPrDeps = deps.openPrDeps;
     this.dataDir = deps.dataDir;
     this.clock = deps.now ?? (() => new Date());
     this.timeline = new TimelineLog(deps.dataDir);
@@ -558,17 +570,20 @@ export class TaskManager extends EventEmitter {
       const project = this.getProject(task.projectId);
       const remotes = (await git(project.path, ['remote'])).split('\n').map((s) => s.trim()).filter(Boolean);
       if (!remotes.includes('origin')) throw new HttpError(400, '仓库没有名为 origin 的远程，无法推送');
-      if (!(await ghVersion())) throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
+      const checkGh = this.openPrDeps?.ghVersion ?? ghVersion;
+      if (!(await checkGh())) throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
 
       try {
-        await pushBranch(task.worktreePath, task.branch);
+        const doPush = this.openPrDeps?.pushBranch ?? pushBranch;
+        await doPush(task.worktreePath, task.branch);
       } catch (err) {
         throw new HttpError(502, `推送失败：${(err as Error).message}`);
       }
       this.note(task, `已推送分支 ${task.branch}`);
       let url: string;
       try {
-        url = await createPullRequest(task.worktreePath, {
+        const doCreate = this.openPrDeps?.createPullRequest ?? createPullRequest;
+        url = await doCreate(task.worktreePath, {
           base: task.baseBranch,
           head: task.branch,
           title,
