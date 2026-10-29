@@ -85,6 +85,8 @@ export function removeProject(store: StateStore, id: string): void {
 
 export interface SettingsInput {
   claudePath?: string;
+  codexPath?: string;
+  grokBuildPath?: string;
   model?: string;
   maxBudgetUsd?: number;
   maxConcurrent?: number;
@@ -94,6 +96,8 @@ export interface SettingsInput {
 export function updateSettings(store: StateStore, input: SettingsInput): Settings {
   const s = store.data.settings;
   if (input.claudePath !== undefined) s.claudePath = input.claudePath.trim().replace(/^"|"$/g, '') || undefined;
+  if (input.codexPath !== undefined) s.codexPath = input.codexPath.trim().replace(/^"|"$/g, '') || undefined;
+  if (input.grokBuildPath !== undefined) s.grokBuildPath = input.grokBuildPath.trim().replace(/^"|"$/g, '') || undefined;
   if (input.model !== undefined) {
     const model = input.model.trim();
     if (model && !isValidModel(model)) throw new HttpError(400, '模型名包含不允许的字符');

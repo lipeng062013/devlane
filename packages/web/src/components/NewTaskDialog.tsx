@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { Task, TaskDraft, TaskKind } from '../types';
+import type { AgentProvider, Task, TaskDraft, TaskKind } from '../types';
 import Modal from './Modal';
 
 const LAST_PROJECT = 'devlane.lastProject';
@@ -12,6 +12,7 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
   const remembered = localStorage.getItem(LAST_PROJECT);
   const [projectId, setProjectId] = useState(projects.find((p) => p.id === remembered)?.id ?? projects[0]?.id ?? '');
   const [kind, setKind] = useState<TaskKind>(draft.kind ?? 'bug');
+  const [agentProvider, setAgentProvider] = useState<AgentProvider>('claude');
   const [title, setTitle] = useState(draft.title ?? '');
   const [description, setDescription] = useState(draft.description ?? '');
   const [baseBranch, setBaseBranch] = useState('');
@@ -48,6 +49,7 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         description,
         jiraKey: draft.jiraKey,
         baseBranch: baseBranch.trim() || undefined,
+        agentProvider,
       }),
     );
     setBusy(false);
@@ -88,6 +90,20 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
             </div>
           </label>
         </div>
+        <label>
+          Agent
+          <div className="segmented">
+            <button type="button" className={agentProvider === 'claude' ? 'on' : ''} onClick={() => setAgentProvider('claude')}>
+              Claude（默认 Claude）
+            </button>
+            <button type="button" className={agentProvider === 'codex' ? 'on' : ''} onClick={() => setAgentProvider('codex')}>
+              Codex
+            </button>
+            <button type="button" className={agentProvider === 'grok-build' ? 'on' : ''} onClick={() => setAgentProvider('grok-build')}>
+              Grok Build
+            </button>
+          </div>
+        </label>
         <label>
           标题
           <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="一句话说清楚要解决什么" />

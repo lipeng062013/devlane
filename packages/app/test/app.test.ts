@@ -429,6 +429,8 @@ describe('环境信息', () => {
     await setup();
     const env = (await get('/api/env')).json();
     expect(env.claude).toBe('9.9.9 (fake)');
+    expect(env.codex).toBe('9.9.9 (fake)');
+    expect(env.grokBuild).toBe('9.9.9 (fake)');
     expect(env.git).toContain('git version');
   });
 });

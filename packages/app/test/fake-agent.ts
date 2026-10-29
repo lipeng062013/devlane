@@ -55,7 +55,7 @@ export class FakeAgent implements AgentAdapter {
     };
   }
 
-  async version(): Promise<string | null> {
+  async version(_binaryPath?: string): Promise<string | null> {
     return '9.9.9 (fake)';
   }
 }

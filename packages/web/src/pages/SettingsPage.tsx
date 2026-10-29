@@ -91,6 +91,8 @@ function GeneralSettings() {
   const { state, act, notify } = useApp();
   const s = state.settings;
   const [claudePath, setClaudePath] = useState(s.claudePath ?? '');
+  const [codexPath, setCodexPath] = useState(s.codexPath ?? '');
+  const [grokBuildPath, setGrokBuildPath] = useState(s.grokBuildPath ?? '');
   const [model, setModel] = useState(s.model ?? '');
   const [budget, setBudget] = useState(String(s.maxBudgetUsd));
   const [concurrent, setConcurrent] = useState(String(s.maxConcurrent));
@@ -98,14 +100,22 @@ function GeneralSettings() {
 
   return (
     <section className="card">
-      <h3>Claude 与任务</h3>
+      <h3>Agent 与任务</h3>
       <label>
-        claude 命令路径（留空自动查找）
+        Claude 命令路径（留空自动查找）
         <input value={claudePath} onChange={(e) => setClaudePath(e.target.value)} placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\claude.cmd" className="mono" />
+      </label>
+      <label>
+        Codex 命令路径（留空自动查找）
+        <input value={codexPath} onChange={(e) => setCodexPath(e.target.value)} placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\codex.cmd" className="mono" />
+      </label>
+      <label>
+        Grok Build 命令路径（留空自动查找；本机实名 grok）
+        <input value={grokBuildPath} onChange={(e) => setGrokBuildPath(e.target.value)} placeholder="例如 C:\Users\you\.grok\bin\grok.exe" className="mono" />
       </label>
       <div className="form-row">
         <label>
-          模型（留空用 Claude 自己的默认设置）
+          模型（留空用 Agent 自己的默认设置）
           <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="例如 sonnet、opus" />
         </label>
         <label>
@@ -115,7 +125,7 @@ function GeneralSettings() {
       </div>
       <div className="form-row">
         <label>
-          同时运行的任务数（1 到 8）
+          同时运行的任务数（1 ～ 8）
           <input type="number" min={1} max={8} value={concurrent} onChange={(e) => setConcurrent(e.target.value)} />
         </label>
         <label>
@@ -123,13 +133,23 @@ function GeneralSettings() {
           <input value={editor} onChange={(e) => setEditor(e.target.value)} placeholder="code" />
         </label>
       </div>
-      <p className="muted small">预算是 claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。</p>
+      <p className="muted small">预算是 Claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。</p>
       <div className="form-actions">
         <span className="spacer" />
         <button
           className="btn btn-primary"
           onClick={() =>
-            void act(() => api.saveSettings({ claudePath, model, maxBudgetUsd: Number(budget), maxConcurrent: Number(concurrent), editorCommand: editor })).then((r) => r && notify('设置已保存'))
+            void act(() =>
+              api.saveSettings({
+                claudePath,
+                codexPath,
+                grokBuildPath,
+                model,
+                maxBudgetUsd: Number(budget),
+                maxConcurrent: Number(concurrent),
+                editorCommand: editor,
+              }),
+            ).then((r) => r && notify('设置已保存'))
           }
         >
           保存
@@ -155,6 +175,12 @@ export default function SettingsPage() {
         <ul className="env-list">
           <li>
             <span className={env?.claude ? 'ok-dot' : 'bad-dot'} /> claude：{env ? (env.claude ?? '未找到。请安装 Claude Code，或在下面填写路径') : '检测中…'}
+          </li>
+          <li>
+            <span className={env?.codex ? 'ok-dot' : 'bad-dot'} /> codex：{env ? (env.codex ?? '未找到。请安装 Codex CLI，或在下面填写路径') : '检测中…'}
+          </li>
+          <li>
+            <span className={env?.grokBuild ? 'ok-dot' : 'bad-dot'} /> grok-build（本机实名 grok）：{env ? (env.grokBuild ?? '未找到。请安装 Grok Build，或在下面填写路径') : '检测中…'}
           </li>
           <li>
             <span className={env?.git ? 'ok-dot' : 'bad-dot'} /> git：{env ? (env.git ?? '未找到') : '检测中…'}

@@ -1,3 +1,5 @@
+export type AgentProvider = 'claude' | 'codex' | 'grok-build';
+
 export type TaskKind = 'bug' | 'feature';
 
 export type TaskStatus =
@@ -45,6 +47,7 @@ export interface Task {
   id: string;
   projectId: string;
   kind: TaskKind;
+  agentProvider?: AgentProvider;
   title: string;
   description: string;
   jiraKey?: string;
@@ -101,6 +104,8 @@ export interface RepoInfo {
 
 export interface PublicSettings {
   claudePath?: string;
+  codexPath?: string;
+  grokBuildPath?: string;
   model?: string;
   maxBudgetUsd: number;
   maxConcurrent: number;
@@ -116,6 +121,8 @@ export interface AppState {
 
 export interface EnvInfo {
   claude: string | null;
+  codex: string | null;
+  grokBuild: string | null;
   git: string | null;
   gh: string | null;
 }
@@ -147,6 +154,7 @@ export interface NewTaskInput {
   description?: string;
   jiraKey?: string;
   baseBranch?: string;
+  agentProvider: AgentProvider;
 }
 
 export interface TaskDraft {
