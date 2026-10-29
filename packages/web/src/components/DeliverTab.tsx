@@ -69,6 +69,33 @@ export default function DeliverTab({ task }: { task: Task }) {
         )}
       </section>
 
+      {task.jiraKey && (
+        <section>
+          <h3>回写到 Jira</h3>
+          <p className="muted small">
+            将当前进展以评论写到 <span className="mono">{task.jiraKey}</span>。需在设置中开启「允许回写 Jira 评论」。验收用 mock，勿对真站联调。
+          </p>
+          {task.jiraWrite?.lastError && <div className="notice-inline bad">{task.jiraWrite.lastError}</div>}
+          {task.jiraWrite?.lastAt && !task.jiraWrite.lastError && (
+            <p className="muted small">最近回写：{new Date(task.jiraWrite.lastAt).toLocaleString()}</p>
+          )}
+          <div className="form-actions">
+            <span className="spacer" />
+            <button
+              className="btn"
+              disabled={!idle || busy || task.status === 'discarded'}
+              onClick={() =>
+                void act(() => api.jiraComment(task.id, true)).then((r) => {
+                  if (r) notify(r.jiraWrite?.lastError ? `回写失败：${r.jiraWrite.lastError}` : `已回写评论到 ${task.jiraKey}`);
+                })
+              }
+            >
+              回写到 Jira
+            </button>
+          </div>
+        </section>
+      )}
+
       <section>
         <h3>其他</h3>
         <div className="form-actions">

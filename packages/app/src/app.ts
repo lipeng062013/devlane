@@ -176,7 +176,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return manager.openPullRequest(req.params.id, { title: String(b.title ?? ''), body: String(b.body ?? '') });
   });
 
-  app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
+    app.post<{ Params: { id: string } }>('/api/tasks/:id/jira-comment', async (req) => {
+    const force = Boolean(obj(req.body).force);
+    return manager.writeJiraComment(req.params.id, { force });
+  });
+
+app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
     manager.openEditor(req.params.id);
     return { ok: true };
   });
@@ -200,7 +205,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.put('/api/settings/jira', async (req) => {
     const b = obj(req.body);
-    updateJira(store, { baseUrl: str(b.baseUrl), email: str(b.email), apiToken: str(b.apiToken), defaultJql: str(b.defaultJql) });
+    updateJira(store, {
+      baseUrl: str(b.baseUrl),
+      email: str(b.email),
+      apiToken: str(b.apiToken),
+      defaultJql: str(b.defaultJql),
+      writeEnabled: b.writeEnabled === undefined ? undefined : Boolean(b.writeEnabled),
+    });
     manager.emit('change', { type: 'settings', id: '' } satisfies Change);
     return publicSettings(store.data.settings);
   });
@@ -212,7 +223,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return publicSettings(store.data.settings);
   });
 
-  // ---------- Jira（只读） ----------
+  // ---------- Jira（查询 + 可选评论回写） ----------
   function jira(): JiraApi {
     const cfg = store.data.settings.jira;
     if (!cfg) throw new HttpError(400, '还没有配置 Jira，请先到「设置」页填写站点、邮箱和 API Token');

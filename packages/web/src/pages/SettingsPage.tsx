@@ -9,11 +9,12 @@ function JiraSettings() {
   const [email, setEmail] = useState(current?.email ?? '');
   const [token, setToken] = useState('');
   const [defaultJql, setDefaultJql] = useState(current?.defaultJql ?? '');
+  const [writeEnabled, setWriteEnabled] = useState(Boolean(current?.writeEnabled));
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save(): Promise<boolean> {
-    const r = await act(() => api.saveJira({ baseUrl, email, apiToken: token || undefined, defaultJql }));
+    const r = await act(() => api.saveJira({ baseUrl, email, apiToken: token || undefined, defaultJql, writeEnabled }));
     if (r) setToken('');
     return Boolean(r);
   }
@@ -36,7 +37,9 @@ function JiraSettings() {
     <section className="card">
       <h3>Jira</h3>
       <p className="muted small">
-        只读：DevLane 只会查询 issue，不会修改 Jira。Token 只保存在本机 <span className="mono">~/.devlane/state.json</span>，不会显示在界面上，也不会写进日志。
+        查询 issue；开启下方开关后，可把任务进展以<strong>评论</strong>回写到 Jira（默认关闭，不做状态流转）。
+        Token 只保存在本机 <span className="mono">~/.devlane/state.json</span>，不会显示在界面上，也不会写进日志。
+        验收与自检一律用 mock / FakeJira，禁止连真实 Jira 写数据。
       </p>
       <label>
         站点地址
@@ -62,6 +65,11 @@ function JiraSettings() {
       <label>
         默认 JQL（可选；不填则默认显示「指派给我且未完成」）
         <input value={defaultJql} onChange={(e) => setDefaultJql(e.target.value)} placeholder="project = HOUSE AND assignee = currentUser() ORDER BY updated DESC" className="mono" />
+      </label>
+
+      <label className="checkbox-row">
+        <input type="checkbox" checked={writeEnabled} onChange={(e) => setWriteEnabled(e.target.checked)} />
+        允许回写 Jira 评论（默认关闭；仅评论，不会改 issue 状态）
       </label>
       {testResult && <div className={`notice-inline ${testResult.ok ? 'ok' : 'bad'}`}>{testResult.text}</div>}
       <div className="form-actions">

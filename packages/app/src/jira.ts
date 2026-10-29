@@ -48,6 +48,8 @@ export interface JiraApi {
   myself(): Promise<{ name: string; email?: string }>;
   search(jql: string, opts?: { limit?: number; pageToken?: string }): Promise<JiraSearchResult>;
   get(key: string): Promise<JiraIssueDetail>;
+  /** 向 issue 追加评论（REST v3 ADF）。验收只用 mock / FakeJira，禁止真站。 */
+  addComment(key: string, text: string): Promise<{ id?: string }>;
 }
 
 export const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
@@ -115,6 +117,21 @@ function toMarkdown(value: unknown): string {
   return '';
 }
 
+/** 最小 ADF：一段 plain text paragraph（回写评论体）。 */
+export function textToAdf(text: string): { type: string; version: number; content: AdfNode[] } {
+  const plain = text.replace(/\0/g, '').slice(0, 30_000);
+  return {
+    type: 'doc',
+    version: 1,
+    content: [
+      {
+        type: 'paragraph',
+        content: plain ? [{ type: 'text', text: plain }] : [],
+      },
+    ],
+  };
+}
+
 function summarize(raw: RawIssue, baseUrl: string): JiraIssueSummary {
   const f = raw.fields;
   return {
@@ -143,13 +160,17 @@ export class JiraClient implements JiraApi {
     this.sleep = cfg.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
-  private async getJson<T>(path: string): Promise<T> {
+  private async requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
     const auth = `Basic ${Buffer.from(`${this.cfg.email}:${this.cfg.apiToken}`).toString('base64')}`;
     for (let attempt = 0; ; attempt++) {
       let res: Response;
       try {
+        const headers: Record<string, string> = { Authorization: auth, Accept: 'application/json' };
+        if (body !== undefined) headers['Content-Type'] = 'application/json';
         res = await this.fetchImpl(`${this.baseUrl}${path}`, {
-          headers: { Authorization: auth, Accept: 'application/json' },
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
           signal: AbortSignal.timeout(30_000),
         });
       } catch (err) {
@@ -161,15 +182,24 @@ export class JiraClient implements JiraApi {
         await this.sleep(Math.min(wait, 30_000));
         continue;
       }
-      if (res.ok) return (await res.json()) as T;
+      if (res.ok) {
+        if (res.status === 204) return undefined as T;
+        const text = await res.text();
+        if (!text) return undefined as T;
+        return JSON.parse(text) as T;
+      }
 
       if (res.status === 401) throw new HttpError(502, 'Jira 认证失败（401）：请检查邮箱和 API Token');
       if (res.status === 403) throw new HttpError(502, 'Jira 拒绝访问（403）：这个账号没有权限');
       if (res.status === 404) throw new HttpError(404, 'Jira 里找不到这条记录或接口（404）');
-      const body = (await res.json().catch(() => null)) as { errorMessages?: string[] } | null;
-      const reason = body?.errorMessages?.[0];
-      throw new HttpError(res.status === 400 ? 400 : 502, `Jira 请求失败（HTTP ${res.status}）${reason ? `：${reason}` : ''}`);
+      const errBody = (await res.json().catch(() => null)) as { errorMessages?: string[] } | null;
+      const reason = errBody?.errorMessages?.[0];
+      throw new HttpError(res.status === 400 ? 400 : 502, `Jira 请求失败（HTTP ${res.status}${reason ? `：${reason}` : ''})`);
     }
+  }
+
+  private async getJson<T>(path: string): Promise<T> {
+    return this.requestJson<T>('GET', path);
   }
 
   async myself(): Promise<{ name: string; email?: string }> {
@@ -211,4 +241,15 @@ export class JiraClient implements JiraApi {
       })),
     };
   }
+
+  async addComment(key: string, text: string): Promise<{ id?: string }> {
+    if (!ISSUE_KEY.test(key)) throw new HttpError(400, `Jira 编号格式不对：${key}`);
+    const result = await this.requestJson<{ id?: string }>(
+      'POST',
+      `/rest/api/3/issue/${encodeURIComponent(key.toUpperCase())}/comment`,
+      { body: textToAdf(String(text ?? '')) },
+    );
+    return { id: result?.id };
+  }
+
 }

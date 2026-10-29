@@ -38,6 +38,7 @@ import {
   removeWorktree,
   worktreesRootFor,
 } from './git';
+import { type JiraApi, JiraClient } from './jira';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
 import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
 import type { StateStore } from './store';
@@ -51,6 +52,8 @@ export interface TaskManagerDeps {
   agent?: AgentAdapter;
   dataDir: string;
   now?: () => Date;
+  /** 可注入 FakeJira；默认真实 JiraClient（生产路径）。验收禁止真站。 */
+  jiraFactory?: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
 }
 
 export interface CreateTaskInput {
@@ -95,6 +98,7 @@ export class TaskManager extends EventEmitter {
   readonly timeline: TimelineLog;
   private readonly store: StateStore;
   private readonly getAgent: (provider: AgentProvider) => AgentAdapter;
+  private readonly makeJira: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
   private readonly dataDir: string;
   private readonly clock: () => Date;
   private readonly runs = new Map<string, RunState>();
@@ -108,6 +112,7 @@ export class TaskManager extends EventEmitter {
       if (!deps.agent) throw new Error('TaskManager 需要 getAgent 或 agent');
       return deps.agent;
     });
+    this.makeJira = deps.jiraFactory ?? ((cfg) => new JiraClient(cfg));
     this.dataDir = deps.dataDir;
     this.clock = deps.now ?? (() => new Date());
     this.timeline = new TimelineLog(deps.dataDir);
@@ -572,6 +577,69 @@ export class TaskManager extends EventEmitter {
       task.status = 'pr_opened';
       this.note(task, `已创建 PR：${url}`);
       this.touch(task);
+      // 评论回写失败不得推翻 PR 成功
+      await this.maybeAutoJiraComment(task);
+      return task;
+    });
+  }
+
+
+  /** Auto Jira comment: only pr_opened + writeEnabled + jiraKey; same fingerprint skips. Errors note only. */
+  async maybeAutoJiraComment(task: Task): Promise<void> {
+    if (!task.jiraKey) return;
+    const cfg = this.store.data.settings.jira;
+    if (!cfg?.writeEnabled) return;
+    if (task.status !== 'pr_opened' || !task.prUrl) return;
+    const fingerprint = `pr_opened:${task.prUrl}`;
+    if (task.jiraWrite?.lastFingerprint === fingerprint) return;
+    try {
+      const text = `DevLane status: ${task.status}\nPR: ${task.prUrl}`;
+      await this.makeJira(cfg).addComment(task.jiraKey, text);
+      task.jiraWrite = { lastFingerprint: fingerprint, lastAt: this.nowIso() };
+      this.note(task, `Jira comment written to ${task.jiraKey}`);
+      this.touch(task);
+    } catch (err) {
+      const msg = (err as Error).message;
+      task.jiraWrite = {
+        lastFingerprint: task.jiraWrite?.lastFingerprint,
+        lastError: msg,
+        lastAt: this.nowIso(),
+      };
+      this.note(task, `Jira comment failed: ${msg}`, 'error');
+      this.touch(task);
+    }
+  }
+
+  /** Manual Jira comment. No key => no-op; writeEnabled off => 400. force uses new fingerprint. */
+  async writeJiraComment(taskId: string, opts: { force?: boolean } = {}): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (!task.jiraKey) return task;
+    const cfg = this.store.data.settings.jira;
+    if (!cfg?.writeEnabled) throw new HttpError(400, '未开启回写：请到设置页打开「允许回写 Jira 评论」');
+    return this.exclusive(taskId, async () => {
+      const fingerprint = opts.force ? `manual:${this.nowIso()}` : `pr_opened:${task.prUrl ?? ''}`;
+      if (!opts.force && task.jiraWrite?.lastFingerprint === fingerprint && fingerprint !== 'pr_opened:') {
+        return task;
+      }
+      try {
+        const lines = [`DevLane status: ${task.status}`];
+        if (task.prUrl) lines.push(`PR: ${task.prUrl}`);
+        lines.push(`task: ${task.title}`);
+        await this.makeJira(cfg).addComment(task.jiraKey!, lines.join('\n'));
+        task.jiraWrite = { lastFingerprint: fingerprint, lastAt: this.nowIso() };
+        this.note(task, `Jira comment written to ${task.jiraKey}`);
+        this.touch(task);
+      } catch (err) {
+        const msg = (err as Error).message;
+        task.jiraWrite = {
+          lastFingerprint: task.jiraWrite?.lastFingerprint,
+          lastError: msg,
+          lastAt: this.nowIso(),
+        };
+        this.note(task, `Jira comment failed: ${msg}`, 'error');
+        this.touch(task);
+        throw err instanceof HttpError ? err : new HttpError(502, msg);
+      }
       return task;
     });
   }

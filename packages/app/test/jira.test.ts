@@ -1,3 +1,4 @@
+/** Jira 客户端单测：一律 fetchImpl mock，禁止连真实 Atlassian 站。验收用 mock。 */
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../src/domain';
 import { JiraClient, buildJql, normalizeBaseUrl } from '../src/jira';
@@ -208,4 +209,30 @@ describe('JiraClient', () => {
     expect(err.message).toContain('连不上 Jira');
     expect(err.message).not.toContain('secret-token');
   });
+
+  it('T1 addComment：POST /rest/api/3/issue/{KEY}/comment，ADF 含文本', async () => {
+    let seen: { url: string; method?: string; body?: string } | undefined;
+    const c = client((url, init) => {
+      seen = { url, method: init?.method, body: typeof init?.body === 'string' ? init.body : undefined };
+      return json({ id: 'c1' });
+    });
+    const r = await c.addComment('house-7', 'DevLane 状态：pr_opened\nPR：https://example.com/pr/1');
+    expect(r).toEqual({ id: 'c1' });
+    expect(seen!.method).toBe('POST');
+    expect(new URL(seen!.url).pathname).toBe('/rest/api/3/issue/HOUSE-7/comment');
+    expect(seen!.body).toContain('DevLane 状态：pr_opened');
+    expect(seen!.body).toContain('https://example.com/pr/1');
+    expect(seen!.body).toContain('"type":"doc"');
+    expect(seen!.body).toContain('"type":"paragraph"');
+  });
+
+  it.each([401, 403])('T2 addComment：HTTP %i 中文错且不泄露 Token', async (status) => {
+    const c = client(() => json({}, status));
+    const err = (await c.addComment('HOUSE-7', 'x').catch((e: unknown) => e)) as HttpError;
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.message).toMatch(/认证失败|拒绝访问/);
+    expect(err.message).not.toContain('secret-token');
+    expect(String(err.stack ?? '')).not.toContain('secret-token');
+  });
+
 });
