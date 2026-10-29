@@ -128,6 +128,8 @@ export interface Settings {
   editorCommand: string;
   /** Agent 初始提示模板（按 kind）；空/未配置回落 prompt.ts DEFAULT_* */
   promptTemplates?: { bug?: string; feature?: string };
+  /** 条件满足时自动合并 PR；缺省/false=关。只控自动，手动合并不受此开关限制 */
+  autoMergePr?: boolean;
   jira?: JiraSettings;
 }
 

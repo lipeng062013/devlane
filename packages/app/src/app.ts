@@ -194,6 +194,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/pr-check', async (req) => manager.refreshPrCheck(req.params.id));
 
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/pr-merge', async (req) => manager.mergeTaskPr(req.params.id));
+
 
 app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
     manager.openEditor(req.params.id);
@@ -216,6 +218,7 @@ app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) =
           }
         : { bug: '', feature: '' }
       : undefined;
+    const hasAutoMergePr = Object.prototype.hasOwnProperty.call(b, 'autoMergePr');
     updateSettings(store, {
       claudePath: str(b.claudePath),
       codexPath: str(b.codexPath),
@@ -225,6 +228,7 @@ app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) =
       maxConcurrent: b.maxConcurrent === undefined ? undefined : Number(b.maxConcurrent),
       editorCommand: str(b.editorCommand),
       ...(hasPromptTemplates ? { promptTemplates } : {}),
+      ...(hasAutoMergePr ? { autoMergePr: Boolean(b.autoMergePr) } : {}),
     });
     manager.emit('change', { type: 'settings', id: '' } satisfies Change);
     manager.pump();

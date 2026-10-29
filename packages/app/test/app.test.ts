@@ -69,7 +69,13 @@ let factoryCfg: { baseUrl: string; email: string; apiToken: string } | undefined
 
 type PrSnap = import('../src/domain').PrCheckSnapshot;
 
-async function setup(agent = new FakeAgent([fixSum]), opts: { prSnapshotFetcher?: (prUrl: string) => Promise<PrSnap> } = {}) {
+async function setup(
+  agent = new FakeAgent([fixSum]),
+  opts: {
+    prSnapshotFetcher?: (prUrl: string) => Promise<PrSnap>;
+    mergePullRequest?: (prUrl: string) => Promise<void>;
+  } = {},
+) {
   repo = makeRepo();
   store = new StateStore();
   jira = new FakeJira();
@@ -78,7 +84,15 @@ async function setup(agent = new FakeAgent([fixSum]), opts: { prSnapshotFetcher?
     factoryCfg = cfg;
     return jira;
   };
-  manager = new TaskManager({ store, agent, dataDir: tempDir('devlane-data-'), jiraFactory, prSnapshotFetcher: opts.prSnapshotFetcher });
+  const openPrDeps = opts.mergePullRequest ? { mergePullRequest: opts.mergePullRequest } : undefined;
+  manager = new TaskManager({
+    store,
+    agent,
+    dataDir: tempDir('devlane-data-'),
+    jiraFactory,
+    prSnapshotFetcher: opts.prSnapshotFetcher,
+    openPrDeps,
+  });
   app = buildApp({
     store,
     manager,
@@ -656,3 +670,175 @@ describe('CI / merge FakeGh (mock only)', () => {
   });
 });
 
+
+describe('auto-merge FakeGh (mock only; never real gh pr merge)', () => {
+  function fakeOk(overrides: Partial<PrSnap> = {}): PrSnap {
+    return { refreshedAt: new Date().toISOString(), prNumber: 42, ci: 'success', merge: 'mergeable', ...overrides };
+  }
+  async function makeTask() {
+    await addProject();
+    const res = await send('POST', '/api/tasks', { projectId: 'P1', kind: 'bug', title: 'auto-merge', description: 'd' });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().id as string;
+  }
+  function simulatePr(id: string, prUrl = 'https://github.com/o/r/pull/42') {
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    task.commitSha = 'abc1234';
+    task.prUrl = prUrl;
+    task.status = 'pr_opened';
+    store.save();
+  }
+
+  it('T1 autoMergePr off + gate ok -> zero merge calls', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk(),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    expect(store.data.settings.autoMergePr).toBeFalsy();
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().prCheck.merge).toBe('mergeable');
+    expect(merges).toEqual([]);
+  });
+
+  it('T2 autoMergePr on + gate ok -> one merge -> merged', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ ci: 'none', merge: 'mergeable' }),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    store.data.settings.autoMergePr = true;
+    store.save();
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().prCheck.merge).toBe('merged');
+    expect(merges).toEqual(['https://github.com/o/r/pull/42']);
+  });
+
+  it('T3 failure/blocked -> no merge', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ ci: 'failure', merge: 'blocked', mergeDetail: 'checks' }),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    store.data.settings.autoMergePr = true;
+    store.save();
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().prCheck.merge).toBe('blocked');
+    expect(merges).toEqual([]);
+  });
+
+  it('T4 already merged is idempotent (no second merge call)', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ merge: 'merged', ci: 'success' }),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    store.data.settings.autoMergePr = true;
+    store.save();
+    const id = await makeTask();
+    simulatePr(id);
+    expect((await send('POST', `/api/tasks/${id}/pr-check`)).json().prCheck.merge).toBe('merged');
+    expect(merges).toEqual([]);
+    // manual also idempotent
+    const m = await send('POST', `/api/tasks/${id}/pr-merge`);
+    expect(m.statusCode, m.body).toBe(200);
+    expect(m.json().prCheck.merge).toBe('merged');
+    expect(merges).toEqual([]);
+  });
+
+  it('T5 Fake merge throw does not pretend success', async () => {
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk(),
+      mergePullRequest: async () => {
+        throw new HttpError(502, 'merge PR failed: boom');
+      },
+    });
+    store.data.settings.autoMergePr = true;
+    store.save();
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-check`);
+    // refresh itself succeeded; auto merge swallowed error
+    expect(res.statusCode).toBe(200);
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    expect(task.prCheck?.merge).toBe('mergeable');
+    expect(task.prCheck?.lastError).toContain('boom');
+  });
+
+  it('T6 no prUrl -> 400; merge not called', async () => {
+    let merges = 0;
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk(),
+      mergePullRequest: async () => {
+        merges++;
+      },
+    });
+    const id = await makeTask();
+    const res = await send('POST', `/api/tasks/${id}/pr-merge`);
+    expect(res.statusCode).toBe(400);
+    expect(merges).toBe(0);
+  });
+
+  it('T7 manual merge works with autoMergePr off; same gate', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ ci: 'success', merge: 'mergeable' }),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    expect(store.data.settings.autoMergePr).toBeFalsy();
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-merge`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().prCheck.merge).toBe('merged');
+    expect(merges).toEqual(['https://github.com/o/r/pull/42']);
+  });
+
+  it('T8 settings default autoMergePr false; PUT toggles; zero real Jira', async () => {
+    await setup();
+    expect(store.data.settings.autoMergePr).toBeFalsy();
+    const pub = (await get('/api/state')).json().settings;
+    expect(pub.autoMergePr).toBeFalsy();
+    const saved = await send('PUT', '/api/settings', { autoMergePr: true });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().autoMergePr).toBe(true);
+    expect(store.data.settings.autoMergePr).toBe(true);
+    const off = await send('PUT', '/api/settings', { autoMergePr: false });
+    expect(off.json().autoMergePr).toBeFalsy();
+    expect(jira.comments).toEqual([]);
+  });
+
+  it('manual merge blocked when CI failure', async () => {
+    const merges: string[] = [];
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ ci: 'failure', merge: 'mergeable' }),
+      mergePullRequest: async (url) => {
+        merges.push(url);
+      },
+    });
+    const id = await makeTask();
+    simulatePr(id);
+    const res = await send('POST', `/api/tasks/${id}/pr-merge`);
+    expect(res.statusCode).toBe(409);
+    expect(merges).toEqual([]);
+  });
+});
