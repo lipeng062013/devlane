@@ -9,6 +9,7 @@ import type {
   PublicSettings,
   RepoInfo,
   Task,
+  TaskPriority,
   TimelineItem,
 } from './types';
 
@@ -66,6 +67,8 @@ export const api = {
   deleteProject: (id: string) => request<{ ok: true }>('DELETE', `/api/projects/${enc(id)}`),
 
   createTask: (input: NewTaskInput) => request<Task>('POST', '/api/tasks', input),
+  updateTaskMeta: (id: string, patch: { tags?: string[]; priority?: TaskPriority }) =>
+    request<Task>('PATCH', `/api/tasks/${enc(id)}`, patch),
   timeline: (id: string, after = 0) => request<{ items: TimelineItem[] }>('GET', `/api/tasks/${enc(id)}/timeline?after=${after}`),
   changes: (id: string) => request<ChangeSet>('GET', `/api/tasks/${enc(id)}/changes`),
   message: (id: string, text: string) => request<Task>('POST', `/api/tasks/${enc(id)}/message`, { text }),

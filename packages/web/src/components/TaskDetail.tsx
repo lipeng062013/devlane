@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { AgentProvider, Task } from '../types';
+import type { AgentProvider, Task, TaskPriority } from '../types';
+import { PRIORITY_LABEL, normalizeTagsClient, taskPriority, taskTags } from '../task-filters';
 
 const AGENT_LABEL: Record<AgentProvider, string> = {
   claude: 'Claude',
@@ -29,6 +30,21 @@ export default function TaskDetail({ task }: { task: Task }) {
   const items = useTimeline(task.id, version);
   const [tab, setTab] = useState<Tab>('timeline');
   const [text, setText] = useState('');
+  const [metaTags, setMetaTags] = useState<string[]>(() => taskTags(task));
+  const [metaPriority, setMetaPriority] = useState<TaskPriority>(() => taskPriority(task));
+  const [tagInput, setTagInput] = useState('');
+  const [metaBusy, setMetaBusy] = useState(false);
+
+  async function saveMeta(): Promise<void> {
+    setMetaBusy(true);
+    const r = await act(() => api.updateTaskMeta(task.id, { tags: metaTags, priority: metaPriority }));
+    setMetaBusy(false);
+    if (r) {
+      setMetaTags(taskTags(r));
+      setMetaPriority(taskPriority(r));
+    }
+  }
+
 
   const idle = IDLE_STATUSES.includes(task.status);
   const running = task.status === 'running';
@@ -91,6 +107,56 @@ export default function TaskDetail({ task }: { task: Task }) {
           )}
         </div>
       </header>
+
+
+      {!gone && (
+        <div className="task-meta-editor">
+          <label className="muted small">
+            本地优先级
+            <select value={metaPriority} onChange={(e) => setMetaPriority(e.target.value as TaskPriority)} disabled={metaBusy}>
+              <option value="none">{PRIORITY_LABEL.none}</option>
+              <option value="high">{PRIORITY_LABEL.high}</option>
+              <option value="medium">{PRIORITY_LABEL.medium}</option>
+              <option value="low">{PRIORITY_LABEL.low}</option>
+            </select>
+          </label>
+          <label className="muted small">
+            本地标签
+            <div className="tag-input-row">
+              {metaTags.map((t) => (
+                <span className="chip chip-tag" key={t}>
+                  {t}
+                  <button
+                    type="button"
+                    className="tag-x"
+                    aria-label={'移除 ' + t}
+                    onClick={() => setMetaTags(metaTags.filter((x) => x !== t))}
+                    disabled={metaBusy}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                disabled={metaBusy}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    setMetaTags(normalizeTagsClient([...metaTags, ...tagInput.split(',')]));
+                    setTagInput('');
+                  }
+                }}
+                placeholder="逗号/Enter 添加"
+              />
+            </div>
+          </label>
+          <button className="btn btn-sm" disabled={metaBusy} onClick={() => void saveMeta()}>
+            {metaBusy ? '保存中…' : '保存标签/优先级'}
+          </button>
+        </div>
+      )}
 
       {!gone && <DenialPanel task={task} />}
 

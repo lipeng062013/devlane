@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type JiraListResult, api } from '../api';
 import { useApp } from '../ctx';
 import type { JiraIssueDetail, JiraIssueSummary } from '../types';
+import { mapJiraPriority, normalizeTagsClient } from '../task-filters';
 import { timeAgo } from '../util';
 
 type Scope = 'mine' | 'reported' | 'recent';
@@ -202,6 +203,8 @@ export default function JiraPage() {
                     title: detail.summary,
                     description: describeIssue(detail),
                     jiraKey: detail.key,
+                    tags: normalizeTagsClient(detail.labels),
+                    priority: mapJiraPriority(detail.priority),
                   })
                 }
               >

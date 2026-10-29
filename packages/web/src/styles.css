@@ -277,3 +277,17 @@ label.check { display: flex; gap: 8px; align-items: flex-start; color: var(--tex
   .split { grid-template-columns: 1fr; grid-template-rows: 240px minmax(0, 1fr); }
   .changes { grid-template-columns: 1fr; grid-template-rows: 160px minmax(0, 1fr); }
 }
+
+.list-filters { display: flex; flex-direction: column; gap: 0; }
+.list-filters .project-filter input { flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; color: inherit; font: inherit; }
+.task-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip-tag { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--fg); border: 1px solid var(--line); }
+.chip-pri-high { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.chip-pri-medium { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.chip-pri-low { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+.tag-input-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.tag-input-row input { flex: 1; min-width: 80px; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+.tag-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; margin-left: 2px; padding: 0 2px; }
+.task-meta-editor { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 8px 14px 4px; border-bottom: 1px solid var(--line); }
+.task-meta-editor label { display: flex; flex-direction: column; gap: 4px; min-width: 160px; flex: 1; }
+.task-meta-editor select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; color: inherit; font: inherit; }

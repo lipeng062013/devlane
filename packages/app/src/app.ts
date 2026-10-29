@@ -141,9 +141,20 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       jiraKey: str(b.jiraKey),
       baseBranch: str(b.baseBranch),
       agentProvider: normalizeAgentProvider(b.agentProvider),
+      tags: Array.isArray(b.tags) ? (b.tags as string[]) : undefined,
+      priority: str(b.priority) as 'high' | 'medium' | 'low' | 'none' | undefined,
     });
     return reply.code(201).send(task);
   });
+
+  app.patch<{ Params: { id: string } }>('/api/tasks/:id', async (req) => {
+    const b = obj(req.body);
+    const patch: { tags?: string[]; priority?: 'high' | 'medium' | 'low' | 'none' } = {};
+    if ('tags' in b) patch.tags = Array.isArray(b.tags) ? (b.tags as string[]) : [];
+    if ('priority' in b) patch.priority = str(b.priority) as 'high' | 'medium' | 'low' | 'none';
+    return manager.updateTaskMeta(req.params.id, patch);
+  });
+
 
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>('/api/tasks/:id/timeline', async (req) => {
     manager.getTask(req.params.id);

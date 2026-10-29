@@ -22,6 +22,7 @@ import {
   type PrCheckSnapshot,
   type Task,
   type TaskKind,
+  type TaskPriority,
   type TimelineItem,
 } from './domain';
 import {
@@ -45,6 +46,7 @@ import { type JiraApi, JiraClient } from './jira';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
 import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
 import type { StateStore } from './store';
+import { normalizePriority, normalizeTags } from './task-meta';
 import { TimelineLog } from './timeline';
 
 export interface TaskManagerDeps {
@@ -78,6 +80,8 @@ export interface CreateTaskInput {
   jiraKey?: string;
   baseBranch?: string;
   agentProvider?: AgentProvider;
+  tags?: string[];
+  priority?: TaskPriority;
 }
 
 export type Change = { type: 'task' | 'timeline' | 'projects' | 'settings'; id: string };
@@ -277,6 +281,8 @@ export class TaskManager extends EventEmitter {
       denials: [],
       approvedRules: [],
       notes,
+      tags: normalizeTags(input.tags),
+      priority: normalizePriority(input.priority),
       createdAt: now,
       updatedAt: now,
     };
@@ -286,6 +292,18 @@ export class TaskManager extends EventEmitter {
     for (const n2 of notes) this.note(task, n2);
     this.touch(task);
     this.pump();
+    return task;
+  }
+
+
+  async updateTaskMeta(taskId: string, patch: { tags?: string[]; priority?: TaskPriority }): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    if (patch.tags !== undefined) task.tags = normalizeTags(patch.tags);
+    else if (!Array.isArray(task.tags)) task.tags = [];
+    if (patch.priority !== undefined) task.priority = normalizePriority(patch.priority);
+    else if (!task.priority) task.priority = 'none';
+    this.touch(task);
     return task;
   }
 

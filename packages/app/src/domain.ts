@@ -16,6 +16,8 @@ export interface PrCheckSnapshot {
 }
 export type TaskKind = 'bug' | 'feature';
 
+export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
+
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -72,6 +74,10 @@ export interface Task {
   title: string;
   description: string;
   jiraKey?: string;
+  /** local tags (independent of Jira, no write-back) */
+  tags: string[];
+  /** local priority (independent of Jira, no write-back) */
+  priority: TaskPriority;
   baseBranch: string;
   baseSha: string;
   branch: string;
