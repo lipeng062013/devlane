@@ -115,7 +115,7 @@ export default function TaskDetail({ task }: { task: Task }) {
             rows={2}
             value={text}
             disabled={!idle}
-            placeholder={idle ? '追问或给 Claude 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）' : running ? 'Claude 正在工作，完成后可以追问' : '当前状态不能追问'}
+            placeholder={idle ? `追问或给 ${agentLabel(task.agentProvider)} 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）` : running ? `${agentLabel(task.agentProvider)} 正在工作，完成后可以追问` : '当前状态不能追问'}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
