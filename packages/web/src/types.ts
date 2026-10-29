@@ -127,6 +127,7 @@ export interface PublicSettings {
   maxBudgetUsd: number;
   maxConcurrent: number;
   editorCommand: string;
+  promptTemplates?: { bug?: string; feature?: string };
   jira: { baseUrl: string; email: string; hasToken: boolean; defaultJql: string; writeEnabled: boolean } | null;
 }
 

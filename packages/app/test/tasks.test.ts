@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HttpError, type Project, type Task } from '../src/domain';
+import { DEFAULT_BUG_PROMPT, DEFAULT_FEATURE_PROMPT } from '../src/prompt';
 import { git, hasUncommitted } from '../src/git';
 import { StateStore } from '../src/store';
 import { TaskManager } from '../src/tasks';
@@ -93,6 +94,8 @@ describe('创建任务', () => {
     await manager.createTask({ ...bug, kind: 'feature', title: '支持乘法' });
     expect(agent.calls[0]!.prompt).toContain('需求开发');
     expect(agent.calls[0]!.prompt).toContain('补充测试');
+    expect(DEFAULT_FEATURE_PROMPT).toContain('{{title}}');
+    expect(DEFAULT_BUG_PROMPT).toContain('缺陷修复');
   });
 
   it('写出权限文件：允许测试命令，禁止提交与推送', async () => {
