@@ -15,13 +15,15 @@ function matches(task: Task, filter: Filter): boolean {
 export default function TasksPage({ selectedId }: { selectedId: string | null }) {
   const { state, openTask, newTask } = useApp();
   const [filter, setFilter] = useState<Filter>('active');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
 
   const tasks = useMemo(
     () =>
       state.tasks
         .filter((t) => matches(t, filter))
+        .filter((t) => projectFilter === 'all' || t.projectId === projectFilter)
         .sort((a, b) => taskRank(a) - taskRank(b) || b.updatedAt.localeCompare(a.updatedAt)),
-    [state.tasks, filter],
+    [state.tasks, filter, projectFilter],
   );
   const selected = state.tasks.find((t) => t.id === selectedId) ?? null;
   const needYou = state.tasks.filter((t) => t.status === 'needs_you').length;
@@ -49,6 +51,24 @@ export default function TasksPage({ selectedId }: { selectedId: string | null })
               {label}
             </button>
           ))}
+        </div>
+        <div className="project-filter">
+          <label className="muted small" htmlFor="task-project-filter">
+            项目
+          </label>
+          <select
+            id="task-project-filter"
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            aria-label="按项目筛选"
+          >
+            <option value="all">全部项目</option>
+            {state.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
         <ul className="task-list">
           {tasks.map((t) => {
@@ -82,6 +102,8 @@ export default function TasksPage({ selectedId }: { selectedId: string | null })
                   <br />
                   点「新任务」描述一个缺陷或需求，或者去 Jira 页选一条。
                 </>
+              ) : projectFilter !== 'all' ? (
+                '该项目下没有任务'
               ) : (
                 '这个分类下没有任务'
               )}
