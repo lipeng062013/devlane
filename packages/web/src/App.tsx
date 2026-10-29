@@ -6,7 +6,8 @@ import JiraPage from './pages/JiraPage';
 import ProjectsPage from './pages/ProjectsPage';
 import SettingsPage from './pages/SettingsPage';
 import TasksPage from './pages/TasksPage';
-import type { AppState, EnvInfo, TaskDraft } from './types';
+import { detectAgentTerminalToasts, syncStatusMap } from './agent-terminal-toast';
+import type { AppState, EnvInfo, TaskDraft, TaskStatus } from './types';
 
 const VIEWS: View[] = ['tasks', 'jira', 'projects', 'settings'];
 
@@ -32,6 +33,8 @@ export default function App() {
   const [offline, setOffline] = useState(false);
   const toastId = useRef(0);
   const timer = useRef<number | undefined>(undefined);
+  /** Prev task status for running→terminal toast edge detection (SSE/poll/first paint). */
+  const statusMapRef = useRef<Map<string, TaskStatus>>(new Map());
 
   const notify = useCallback((text: string, level: 'info' | 'error' = 'info') => {
     const id = ++toastId.current;
@@ -60,6 +63,14 @@ export default function App() {
     void refresh();
     void api.env().then(setEnv).catch(() => undefined);
   }, [refresh]);
+
+  // Agent 终态 toast：仅 running→review/needs_you/failed 边沿；同 status 的 poll/SSE 不重弹
+  useEffect(() => {
+    if (!state) return;
+    const edges = detectAgentTerminalToasts(statusMapRef.current, state.tasks);
+    for (const t of edges) notify(t.text, t.level);
+    syncStatusMap(statusMapRef.current, state.tasks);
+  }, [state, notify]);
 
   useEffect(() => {
     const onHash = (): void => setRoute(parseHash());
