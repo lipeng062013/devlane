@@ -15,6 +15,8 @@ const HOST = `127.0.0.1:${PORT}`;
 
 class FakeJira implements JiraApi {
   searches: Array<{ jql: string; limit?: number; pageToken?: string }> = [];
+  comments: Array<{ key: string; text: string }> = [];
+  failComment: Error | null = null;
   async myself() {
     return { name: '李明', email: 'me@example.com' };
   }
@@ -51,11 +53,17 @@ class FakeJira implements JiraApi {
       comments: [],
     };
   }
+  async addComment(key: string, text: string) {
+    if (this.failComment) throw this.failComment;
+    this.comments.push({ key, text });
+    return { id: `fake-${this.comments.length}` };
+  }
 }
 
 let app: FastifyInstance;
 let repo: string;
 let store: StateStore;
+let manager: TaskManager;
 let jira: FakeJira;
 let factoryCfg: { baseUrl: string; email: string; apiToken: string } | undefined;
 
@@ -63,16 +71,18 @@ async function setup(agent = new FakeAgent([fixSum])) {
   repo = makeRepo();
   store = new StateStore();
   jira = new FakeJira();
-  const manager = new TaskManager({ store, agent, dataDir: tempDir('devlane-data-') });
+  factoryCfg = undefined;
+  const jiraFactory = (cfg: { baseUrl: string; email: string; apiToken: string }) => {
+    factoryCfg = cfg;
+    return jira;
+  };
+  manager = new TaskManager({ store, agent, dataDir: tempDir('devlane-data-'), jiraFactory });
   app = buildApp({
     store,
     manager,
     agent,
     port: PORT,
-    jiraFactory: (cfg) => {
-      factoryCfg = cfg;
-      return jira;
-    },
+    jiraFactory,
   });
   await app.ready();
   return { agent, manager };
@@ -348,7 +358,7 @@ describe('Jira', () => {
   it('保存配置：地址规范化，Token 永远不会返回给界面', async () => {
     const res = await configure();
     expect(res.statusCode).toBe(200);
-    expect(res.json().jira).toEqual({ baseUrl: 'https://house730.atlassian.net', email: 'me@example.com', hasToken: true, defaultJql: '' });
+    expect(res.json().jira).toEqual({ baseUrl: 'https://house730.atlassian.net', email: 'me@example.com', hasToken: true, defaultJql: '', writeEnabled: false });
     expect(res.body).not.toContain('secret-token-123');
     expect((await get('/api/state')).body).not.toContain('secret-token-123');
     // 内部确实保存了
@@ -432,5 +442,117 @@ describe('环境信息', () => {
     expect(env.codex).toBe('9.9.9 (fake)');
     expect(env.grokBuild).toBe('9.9.9 (fake)');
     expect(env.git).toContain('git version');
+  });
+});
+
+describe('Jira 评论回写（全 mock / FakeJira，禁止真站）', () => {
+  beforeEach(async () => {
+    await setup();
+    await addProject();
+  });
+
+  async function enableWrite(on = true) {
+    const res = await send('PUT', '/api/settings/jira', {
+      baseUrl: 'https://mock.example.test',
+      email: 'me@example.com',
+      apiToken: 'secret-token',
+      writeEnabled: on,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().jira.writeEnabled).toBe(on);
+    expect(res.body).not.toContain('secret-token');
+  }
+
+  async function makeTask(withKey: boolean) {
+    const body: Record<string, unknown> = { projectId: 'P1', kind: 'bug', title: '回写测', description: 'd' };
+    if (withKey) body.jiraKey = 'HOUSE-7';
+    const res = await send('POST', '/api/tasks', body);
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().id as string;
+  }
+
+  function simulatePrOpened(id: string, prUrl = 'https://github.com/o/r/pull/1') {
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    task.commitSha = 'abc1234';
+    task.prUrl = prUrl;
+    task.status = 'pr_opened';
+    store.save();
+    return task;
+  }
+
+  it('T3 无 jiraKey → 自动与手动均零评论', async () => {
+    await enableWrite(true);
+    const id = await makeTask(false);
+    simulatePrOpened(id);
+    await manager.maybeAutoJiraComment(store.data.tasks.find((t) => t.id === id)!);
+    expect(jira.comments).toHaveLength(0);
+    const res = await send('POST', `/api/tasks/${id}/jira-comment`, { force: true });
+    expect(res.statusCode).toBe(200);
+    expect(jira.comments).toHaveLength(0);
+  });
+
+  it('T4 writeEnabled=false → 自动零 POST；手动 400', async () => {
+    await enableWrite(false);
+    const id = await makeTask(true);
+    simulatePrOpened(id);
+    await manager.maybeAutoJiraComment(store.data.tasks.find((t) => t.id === id)!);
+    expect(jira.comments).toHaveLength(0);
+    const res = await send('POST', `/api/tasks/${id}/jira-comment`, { force: true });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('未开启回写');
+    expect(jira.comments).toHaveLength(0);
+  });
+
+  it('T5 开关开 + key + pr_opened → 评论含 prUrl；指纹幂等', async () => {
+    await enableWrite(true);
+    const id = await makeTask(true);
+    const prUrl = 'https://github.com/o/r/pull/42';
+    simulatePrOpened(id, prUrl);
+    await manager.maybeAutoJiraComment(store.data.tasks.find((t) => t.id === id)!);
+    expect(jira.comments).toHaveLength(1);
+    expect(jira.comments[0]).toMatchObject({ key: 'HOUSE-7' });
+    expect(jira.comments[0]!.text).toContain(prUrl);
+    expect(jira.comments[0]!.text).toContain('pr_opened');
+    expect(store.data.tasks.find((t) => t.id === id)!.jiraWrite?.lastFingerprint).toBe(`pr_opened:${prUrl}`);
+    // 同指纹再自动 → 跳过
+    await manager.maybeAutoJiraComment(store.data.tasks.find((t) => t.id === id)!);
+    expect(jira.comments).toHaveLength(1);
+    // 手动 force 可再写
+    const res = await send('POST', `/api/tasks/${id}/jira-comment`, { force: true });
+    expect(res.statusCode).toBe(200);
+    expect(jira.comments).toHaveLength(2);
+    expect(jira.comments[1]!.text).toContain(prUrl);
+  });
+
+  it('T6 写失败后 status 仍为 pr_opened；有 lastError；可重试', async () => {
+    await enableWrite(true);
+    const id = await makeTask(true);
+    simulatePrOpened(id);
+    jira.failComment = new Error('mock 写失败');
+    await manager.maybeAutoJiraComment(store.data.tasks.find((t) => t.id === id)!);
+    const task = store.data.tasks.find((t) => t.id === id)!;
+    expect(task.status).toBe('pr_opened');
+    expect(task.prUrl).toBeTruthy();
+    expect(task.jiraWrite?.lastError).toContain('mock 写失败');
+    expect(jira.comments).toHaveLength(0);
+    jira.failComment = null;
+    await manager.maybeAutoJiraComment(task);
+    expect(jira.comments).toHaveLength(1);
+    expect(store.data.tasks.find((t) => t.id === id)!.jiraWrite?.lastError).toBeUndefined();
+  });
+
+  it('T7 旧只读 myself/search/get 仍绿', async () => {
+    await enableWrite(true);
+    expect((await send('POST', '/api/jira/test', {})).json()).toMatchObject({ ok: true });
+    expect((await get('/api/jira/issues')).statusCode).toBe(200);
+    expect((await get('/api/jira/issues/HOUSE-7')).json().key).toBe('HOUSE-7');
+  });
+
+  it('T8 publicSettings 暴露 writeEnabled 且永不回传 Token；文案路径可测', async () => {
+    await enableWrite(true);
+    const state = (await get('/api/state')).json();
+    expect(state.settings.jira.writeEnabled).toBe(true);
+    expect(JSON.stringify(state)).not.toContain('secret-token');
+    // Token must never appear in public JSON (AC7 / T8)
   });
 });

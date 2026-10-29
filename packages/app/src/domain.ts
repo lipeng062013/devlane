@@ -82,6 +82,8 @@ export interface Task {
   lastError?: string;
   commitSha?: string;
   prUrl?: string;
+  /** Jira 评论回写状态（本刀仅评论，无 transition） */
+  jiraWrite?: { lastFingerprint?: string; lastError?: string; lastAt?: string };
   test?: TestRun;
   /** 创建 worktree 时附带的提示（例如 node_modules 未能链接）。 */
   notes: string[];
@@ -94,6 +96,8 @@ export interface JiraSettings {
   email: string;
   apiToken: string;
   defaultJql?: string;
+  /** 允许把进展以评论回写到 Jira；缺省视为 false */
+  writeEnabled?: boolean;
 }
 
 export interface Settings {

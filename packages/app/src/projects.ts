@@ -127,6 +127,7 @@ export interface JiraInput {
   email?: string;
   apiToken?: string;
   defaultJql?: string;
+  writeEnabled?: boolean;
 }
 
 export function updateJira(store: StateStore, input: JiraInput): void {
@@ -137,7 +138,15 @@ export function updateJira(store: StateStore, input: JiraInput): void {
   // 不填 Token 表示保持原来的
   const apiToken = input.apiToken?.trim() || current?.apiToken || '';
   if (!apiToken) throw new HttpError(400, '请填写 API Token');
-  store.data.settings.jira = { baseUrl, email, apiToken, defaultJql: input.defaultJql?.trim() || undefined };
+  const writeEnabled =
+    input.writeEnabled !== undefined ? Boolean(input.writeEnabled) : Boolean(current?.writeEnabled);
+  store.data.settings.jira = {
+    baseUrl,
+    email,
+    apiToken,
+    defaultJql: input.defaultJql?.trim() || undefined,
+    writeEnabled,
+  };
   store.save();
 }
 
@@ -146,6 +155,14 @@ export function publicSettings(settings: Settings): Record<string, unknown> {
   const { jira, ...rest } = settings;
   return {
     ...rest,
-    jira: jira ? { baseUrl: jira.baseUrl, email: jira.email, hasToken: Boolean(jira.apiToken), defaultJql: jira.defaultJql ?? '' } : null,
+    jira: jira
+      ? {
+          baseUrl: jira.baseUrl,
+          email: jira.email,
+          hasToken: Boolean(jira.apiToken),
+          defaultJql: jira.defaultJql ?? '',
+          writeEnabled: Boolean(jira.writeEnabled),
+        }
+      : null,
   };
 }

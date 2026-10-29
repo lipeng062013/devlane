@@ -4,7 +4,7 @@
 
 - 运行在你自己的电脑上，只监听 `127.0.0.1`
 - 调用你本机已经登录的 `claude` 命令，不需要另外配模型密钥
-- 能从 Jira 列表里选 issue，一键变成任务（只读，不改 Jira）
+- 能从 Jira 列表里选 issue，一键变成任务；可选开关回写评论（默认关，不做 transition）
 - 项目路径手动输入，支持任意本地 git 仓库
 
 使用方法见 [docs/02-使用手册.md](docs/02-使用手册.md)，产品设计见 [docs/01-产品设计.md](docs/01-产品设计.md)。
@@ -73,6 +73,7 @@ docs/     产品设计、使用手册；archive-团队版/ 是之前面向团队
 - Claude 在独立 worktree 里工作；权限通过 `--settings` 文件明确给出，**永久禁止** `git commit / push / reset / checkout / clean`、`rm`、`sudo`、`curl`、`gh` 等，这些即使你点「放行」也不行。
 - 需要审批的操作（装依赖、联网等）被自动拒绝并记录，由你逐条决定是否放行，精确到那一条命令。
 - Jira Token 只保存在 `~/.devlane/state.json`，接口永不返回，不写日志。
+- Jira 评论回写验收只用 mock / FakeJira，禁止连真实 Atlassian 站发写请求。
 
 不覆盖的风险：Claude 通过被允许的测试命令间接运行仓库里的恶意脚本。对不可信仓库请先自行评估。
 

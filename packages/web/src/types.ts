@@ -62,6 +62,7 @@ export interface Task {
   lastError?: string;
   commitSha?: string;
   prUrl?: string;
+  jiraWrite?: { lastFingerprint?: string; lastError?: string; lastAt?: string };
   test?: TestRun;
   notes: string[];
   createdAt: string;
@@ -110,7 +111,7 @@ export interface PublicSettings {
   maxBudgetUsd: number;
   maxConcurrent: number;
   editorCommand: string;
-  jira: { baseUrl: string; email: string; hasToken: boolean; defaultJql: string } | null;
+  jira: { baseUrl: string; email: string; hasToken: boolean; defaultJql: string; writeEnabled: boolean } | null;
 }
 
 export interface AppState {
