@@ -232,6 +232,41 @@ function PromptTemplateSettings() {
   );
 }
 
+
+function AutoMergeSettings() {
+  const { state, act, notify } = useApp();
+  const [autoMergePr, setAutoMergePr] = useState(Boolean(state.settings.autoMergePr));
+
+  return (
+    <section className="card">
+      <h3>自动合并 PR</h3>
+      <p className="muted small">
+        默认关闭。开启后，在「交付」里刷新 PR 状态且满足条件（CI 通过或无检查，且可合并）时，面板会自动执行{' '}
+        <span className="mono">gh pr merge --merge</span>。手动「合并 PR」按钮不受此开关限制，但走同一条件门。
+      </p>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={autoMergePr}
+          onChange={(e) => setAutoMergePr(e.target.checked)}
+        />
+        条件满足时自动合并 PR（默认关闭）
+      </label>
+      <div className="form-actions">
+        <span className="spacer" />
+        <button
+          className="btn btn-primary"
+          onClick={() =>
+            void act(() => api.saveSettings({ autoMergePr })).then((r) => r && notify('自动合并设置已保存'))
+          }
+        >
+          保存
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const { env, refreshEnv } = useApp();
   return (
@@ -265,6 +300,7 @@ export default function SettingsPage() {
       </section>
       <GeneralSettings />
       <PromptTemplateSettings />
+      <AutoMergeSettings />
       <JiraSettings />
     </div>
   );

@@ -31,6 +31,23 @@ function mergeLabel(merge: PrCheckMerge, detail?: string): string {
   }
 }
 
+
+function canMergeGate(ci: PrCheckCi, merge: PrCheckMerge): boolean {
+  return (ci === 'success' || ci === 'none') && merge === 'mergeable';
+}
+
+function mergeGateReason(ci: PrCheckCi, merge: PrCheckMerge, detail?: string): string {
+  if (merge === 'merged') return '已合并';
+  if (merge === 'closed') return 'PR 已关闭';
+  if (merge === 'blocked') return detail ? '不可合并：' + detail : '不可合并';
+  if (merge === 'unknown') return '合并态未知，请先刷新';
+  if (ci === 'pending') return 'CI 进行中';
+  if (ci === 'failure') return 'CI 失败';
+  if (ci === 'unknown') return 'CI 状态未知';
+  if (!canMergeGate(ci, merge)) return '当前不满足合并条件';
+  return '';
+}
+
 export default function DeliverTab({ task }: { task: Task }) {
   const { act, env, notify } = useApp();
   const [message, setMessage] = useState(defaultCommitMessage(task));
@@ -38,6 +55,7 @@ export default function DeliverTab({ task }: { task: Task }) {
   const [prBody, setPrBody] = useState(task.jiraKey ? `Jira: ${task.jiraKey}\n\n${task.description}`.trim() : task.description);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   useEffect(() => {
     setMessage(defaultCommitMessage(task));
@@ -65,6 +83,13 @@ export default function DeliverTab({ task }: { task: Task }) {
     const r = await act(() => api.openPr(task.id, prTitle, prBody));
     setBusy(false);
     if (r?.prUrl) notify(`PR 已创建：${r.prUrl}`);
+  }
+
+  async function mergePr(): Promise<void> {
+    setMerging(true);
+    const r = await act(() => api.mergePr(task.id));
+    setMerging(false);
+    if (r?.prCheck?.merge === 'merged') notify('PR 已合并');
   }
 
   return (
@@ -112,7 +137,7 @@ export default function DeliverTab({ task }: { task: Task }) {
       {task.prUrl && (
         <section>
           <h3>3. CI / 合并态</h3>
-          <p className="muted small">只读 gh pr view; FakeGh/mock 验收</p>
+          <p className="muted small">刷新为只读 gh pr view；合并走 gh pr merge --merge（验收仅 FakeGh）</p>
           {task.prCheck ? (
             <>
               <div className={ciClass(task.prCheck.ci)}>
@@ -126,12 +151,34 @@ export default function DeliverTab({ task }: { task: Task }) {
           )}
           {task.prCheck?.lastError && <div className="notice-inline bad">{task.prCheck.lastError}</div>}
           {ghMissing && <p className="muted small"><b className="bad-text">未检测到 gh</b></p>}
-          <div className="form-actions">
-            <span className="spacer" />
-            <button className="btn" disabled={refreshing || ghMissing || task.status === 'discarded'} onClick={() => void refreshPr()}>
-              {refreshing ? "刷新中..." : "刷新状态"}
-            </button>
-          </div>
+                    {(() => {
+            const check = task.prCheck;
+            const already = check?.merge === 'merged';
+            const gateOk = check ? canMergeGate(check.ci, check.merge) : false;
+            const reason = check ? mergeGateReason(check.ci, check.merge, check.mergeDetail) : '请先刷新状态';
+            const mergeDisabled =
+              merging || ghMissing || task.status === 'discarded' || already || !gateOk || !task.prUrl;
+            return (
+              <div className="form-actions">
+                {!already && !gateOk && check && (
+                  <span className="muted small">{reason}</span>
+                )}
+                {already && <span className="muted small">已合并</span>}
+                <span className="spacer" />
+                <button className="btn" disabled={refreshing || ghMissing || task.status === 'discarded'} onClick={() => void refreshPr()}>
+                  {refreshing ? '刷新中…' : '刷新状态'}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={mergeDisabled}
+                  title={mergeDisabled && !already ? reason : undefined}
+                  onClick={() => void mergePr()}
+                >
+                  {merging ? '合并中…' : already ? '已合并' : '合并 PR'}
+                </button>
+              </div>
+            );
+          })()}
         </section>
       )}
 

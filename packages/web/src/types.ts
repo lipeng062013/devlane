@@ -128,6 +128,8 @@ export interface PublicSettings {
   maxConcurrent: number;
   editorCommand: string;
   promptTemplates?: { bug?: string; feature?: string };
+  /** Opt-in auto-merge after refresh when CI/merge gate passes; default off */
+  autoMergePr?: boolean;
   jira: { baseUrl: string; email: string; hasToken: boolean; defaultJql: string; writeEnabled: boolean } | null;
 }
 

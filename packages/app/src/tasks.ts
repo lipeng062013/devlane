@@ -43,6 +43,7 @@ import {
   worktreesRootFor,
 } from './git';
 import { type JiraApi, JiraClient } from './jira';
+import { canMergePr, mergeBlockReason, mergePullRequest } from './pr-merge';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
 import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
 import type { StateStore } from './store';
@@ -68,6 +69,8 @@ export interface TaskManagerDeps {
       worktreePath: string,
       opts: { base: string; head: string; title: string; body: string },
     ) => Promise<string>;
+    /** FakeGh merge inject; default real mergePullRequest. Never call against real repos in tests. */
+    mergePullRequest?: (prUrl: string) => Promise<void>;
   };
 }
 
@@ -626,30 +629,78 @@ export class TaskManager extends EventEmitter {
 
 
 
+  private async fetchPrSnap(task: Task): Promise<PrCheckSnapshot> {
+    if (!task.prUrl) throw new HttpError(400, '还没有 PR');
+    if (this.prSnapshotFetcher) return this.prSnapshotFetcher(task.prUrl);
+    const checkGh = this.openPrDeps?.ghVersion ?? ghVersion;
+    if (!(await checkGh())) {
+      throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
+    }
+    return fetchPrSnapshot(task.prUrl);
+  }
+
+  private applyPrSnap(task: Task, snap: PrCheckSnapshot): void {
+    if (snap.prNumber) task.prNumber = snap.prNumber;
+    task.prCheck = {
+      refreshedAt: snap.refreshedAt,
+      prNumber: snap.prNumber ?? task.prNumber ?? parsePrNumber(task.prUrl!),
+      ci: snap.ci,
+      merge: snap.merge,
+      mergeDetail: snap.mergeDetail,
+    };
+  }
+
+  /**
+   * Attempt merge after gate. Already-merged is idempotent (no second gh call).
+   * auto=true: skip silently when gate fails; swallow merge errors into note/lastError.
+   * auto=false (manual): throw on gate fail / merge error.
+   */
+  private async tryMergePr(task: Task, opts: { auto: boolean }): Promise<void> {
+    if (!task.prUrl || !task.prCheck) return;
+    if (task.prCheck.merge === 'merged') return;
+    const block = mergeBlockReason(task.prCheck);
+    if (block) {
+      if (!opts.auto) throw new HttpError(409, block);
+      return;
+    }
+    if (!canMergePr(task.prCheck)) {
+      if (!opts.auto) throw new HttpError(409, '当前不满足合并条件');
+      return;
+    }
+    try {
+      const doMerge = this.openPrDeps?.mergePullRequest ?? ((url: string) => mergePullRequest(url));
+      await doMerge(task.prUrl);
+      task.prCheck = {
+        ...task.prCheck,
+        merge: 'merged',
+        mergeDetail: undefined,
+        lastError: undefined,
+        refreshedAt: this.nowIso(),
+      };
+      this.note(task, `已合并 PR：${task.prUrl}`);
+      this.touch(task);
+    } catch (err) {
+      const msg = err instanceof HttpError ? err.message : (err as Error).message;
+      task.prCheck = { ...task.prCheck, lastError: msg };
+      this.note(task, `合并 PR 失败：${msg}`, 'error');
+      this.touch(task);
+      if (!opts.auto) throw err instanceof HttpError ? err : new HttpError(502, msg);
+    }
+  }
+
   async refreshPrCheck(taskId: string): Promise<Task> {
     const task = this.getTask(taskId);
     if (!task.prUrl) throw new HttpError(400, '还没有 PR');
     return this.exclusive(taskId, async () => {
       try {
-        let snap: PrCheckSnapshot;
-        if (this.prSnapshotFetcher) {
-          snap = await this.prSnapshotFetcher(task.prUrl!);
-        } else {
-          if (!(await ghVersion())) {
-            throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
-          }
-          snap = await fetchPrSnapshot(task.prUrl!);
-        }
-        if (snap.prNumber) task.prNumber = snap.prNumber;
-        task.prCheck = {
-          refreshedAt: snap.refreshedAt,
-          prNumber: snap.prNumber ?? task.prNumber ?? parsePrNumber(task.prUrl!),
-          ci: snap.ci,
-          merge: snap.merge,
-          mergeDetail: snap.mergeDetail,
-        };
+        const snap = await this.fetchPrSnap(task);
+        this.applyPrSnap(task, snap);
         this.note(task, `已刷新 PR 状态：CI ${snap.ci}，合并 ${snap.merge}`);
         this.touch(task);
+        // Auto-merge only after successful snap writeback; one attempt; no new polling.
+        if (this.store.data.settings.autoMergePr) {
+          await this.tryMergePr(task, { auto: true });
+        }
         return task;
       } catch (err) {
         const msg = err instanceof HttpError ? err.message : (err as Error).message;
@@ -668,6 +719,42 @@ export class TaskManager extends EventEmitter {
       }
     });
   }
+
+  /**
+   * Manual merge: refresh then same gate as auto; ignores autoMergePr switch.
+   * Idempotent if already merged.
+   */
+  async mergeTaskPr(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (!task.prUrl) throw new HttpError(400, '还没有 PR');
+    if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    return this.exclusive(taskId, async () => {
+      try {
+        const snap = await this.fetchPrSnap(task);
+        this.applyPrSnap(task, snap);
+        this.note(task, `已刷新 PR 状态：CI ${snap.ci}，合并 ${snap.merge}`);
+        this.touch(task);
+      } catch (err) {
+        const msg = err instanceof HttpError ? err.message : (err as Error).message;
+        const prev = task.prCheck;
+        task.prCheck = {
+          refreshedAt: prev?.refreshedAt ?? this.nowIso(),
+          prNumber: prev?.prNumber ?? task.prNumber ?? parsePrNumber(task.prUrl!),
+          ci: prev?.ci ?? 'unknown',
+          merge: prev?.merge ?? 'unknown',
+          mergeDetail: prev?.mergeDetail,
+          lastError: msg,
+        };
+        this.note(task, `刷新 PR 状态失败：${msg}`, 'error');
+        this.touch(task);
+        throw err instanceof HttpError ? err : new HttpError(502, msg);
+      }
+      if (task.prCheck?.merge === 'merged') return task;
+      await this.tryMergePr(task, { auto: false });
+      return task;
+    });
+  }
+
 
   /** Auto Jira comment: only pr_opened + writeEnabled + jiraKey; same fingerprint skips. Errors note only. */
   async maybeAutoJiraComment(task: Task): Promise<void> {

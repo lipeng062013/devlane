@@ -113,6 +113,7 @@ export interface SettingsInput {
   maxConcurrent?: number;
   editorCommand?: string;
   promptTemplates?: { bug?: string; feature?: string };
+  autoMergePr?: boolean;
 }
 
 export function updateSettings(store: StateStore, input: SettingsInput): Settings {
@@ -144,6 +145,10 @@ export function updateSettings(store: StateStore, input: SettingsInput): Setting
     const next = normalizePromptTemplates(input.promptTemplates);
     if (next) s.promptTemplates = next;
     else delete s.promptTemplates;
+  }
+  if (input.autoMergePr !== undefined) {
+    if (input.autoMergePr) s.autoMergePr = true;
+    else delete s.autoMergePr;
   }
   store.save();
   return s;
