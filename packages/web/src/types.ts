@@ -12,6 +12,8 @@ export interface PrCheckSnapshot {
 }
 export type TaskKind = 'bug' | 'feature';
 
+export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
+
 export type TaskStatus =
   | 'queued'
   | 'running'
@@ -61,6 +63,8 @@ export interface Task {
   title: string;
   description: string;
   jiraKey?: string;
+  tags?: string[];
+  priority?: TaskPriority;
   baseBranch: string;
   branch: string;
   worktreePath: string;
@@ -168,6 +172,8 @@ export interface NewTaskInput {
   jiraKey?: string;
   baseBranch?: string;
   agentProvider: AgentProvider;
+  tags?: string[];
+  priority?: TaskPriority;
 }
 
 export interface TaskDraft {
@@ -175,4 +181,6 @@ export interface TaskDraft {
   title?: string;
   description?: string;
   jiraKey?: string;
+  tags?: string[];
+  priority?: TaskPriority;
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { AgentProvider, Task, TaskDraft, TaskKind } from '../types';
+import type { AgentProvider, Task, TaskDraft, TaskKind, TaskPriority } from '../types';
+import { PRIORITY_LABEL, normalizeTagsClient } from '../task-filters';
 import Modal from './Modal';
 
 const LAST_PROJECT = 'devlane.lastProject';
@@ -16,6 +17,9 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
   const [title, setTitle] = useState(draft.title ?? '');
   const [description, setDescription] = useState(draft.description ?? '');
   const [baseBranch, setBaseBranch] = useState('');
+  const [tags, setTags] = useState<string[]>(normalizeTagsClient(draft.tags));
+  const [tagInput, setTagInput] = useState('');
+  const [priority, setPriority] = useState<TaskPriority>(draft.priority ?? 'none');
   const [busy, setBusy] = useState(false);
 
   const project = projects.find((p) => p.id === projectId);
@@ -50,6 +54,8 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         jiraKey: draft.jiraKey,
         baseBranch: baseBranch.trim() || undefined,
         agentProvider,
+        tags,
+        priority,
       }),
     );
     setBusy(false);
@@ -121,6 +127,49 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
             }
           />
         </label>
+
+        <div className="form-row">
+          <label>
+            优先级（本地，不回写 Jira）
+            <select id="new-task-priority" value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+              <option value="none">{PRIORITY_LABEL.none}</option>
+              <option value="high">{PRIORITY_LABEL.high}</option>
+              <option value="medium">{PRIORITY_LABEL.medium}</option>
+              <option value="low">{PRIORITY_LABEL.low}</option>
+            </select>
+          </label>
+          <label>
+            标签（本地，逗号或 Enter 添加）
+            <div className="tag-input-row">
+              {tags.map((t) => (
+                <span className="chip chip-tag" key={t}>
+                  {t}
+                  <button type="button" className="tag-x" aria-label={'移除 ' + t} onClick={() => setTags(tags.filter((x) => x !== t))}>
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const next = normalizeTagsClient([...tags, ...tagInput.split(',')]);
+                    setTags(next);
+                    setTagInput('');
+                  }
+                }}
+                onBlur={() => {
+                  if (!tagInput.trim()) return;
+                  setTags(normalizeTagsClient([...tags, ...tagInput.split(',')]));
+                  setTagInput('');
+                }}
+                placeholder="例如 frontend"
+              />
+            </div>
+          </label>
+        </div>
         <label>
           基线分支（留空用项目默认：{project?.baseBranch}）
           <input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder={project?.baseBranch} />
