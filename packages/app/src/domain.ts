@@ -1,3 +1,9 @@
+export type AgentProvider = 'claude' | 'codex' | 'grok-build';
+
+export function normalizeAgentProvider(v: unknown): AgentProvider {
+  return v === 'codex' || v === 'grok-build' || v === 'claude' ? v : 'claude';
+}
+
 export type TaskKind = 'bug' | 'feature';
 
 export type TaskStatus =
@@ -51,6 +57,8 @@ export interface Task {
   id: string;
   projectId: string;
   kind: TaskKind;
+  /** 执行该任务的 Agent；旧数据缺省按 claude 读 */
+  agentProvider: AgentProvider;
   title: string;
   description: string;
   jiraKey?: string;
@@ -90,6 +98,8 @@ export interface JiraSettings {
 
 export interface Settings {
   claudePath?: string;
+  codexPath?: string;
+  grokBuildPath?: string;
   model?: string;
   maxBudgetUsd: number;
   maxConcurrent: number;

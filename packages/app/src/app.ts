@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { AgentAdapter } from './claude';
-import { HttpError } from './domain';
+import { type AgentProvider, HttpError, normalizeAgentProvider } from './domain';
 import { gitVersion, ghVersion, inspectRepo } from './git';
 import { type JiraApi, JiraClient, type JiraScope, buildJql } from './jira';
 import {
@@ -20,7 +20,10 @@ import type { Change, TaskManager } from './tasks';
 export interface AppOptions {
   store: StateStore;
   manager: TaskManager;
-  agent: AgentAdapter;
+  /** 按 provider 取适配器（优先）。 */
+  getAgent?: (provider: AgentProvider) => AgentAdapter;
+  /** 兼容旧测试：恒定返回同一 FakeAgent。 */
+  agent?: AgentAdapter;
   port: number;
   webDir?: string;
   jiraFactory?: (cfg: { baseUrl: string; email: string; apiToken: string }) => JiraApi;
@@ -37,6 +40,10 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1024 * 1024 });
   const { store, manager } = opts;
+  const getAgent = opts.getAgent ?? ((_: AgentProvider) => {
+    if (!opts.agent) throw new Error('buildApp 需要 getAgent 或 agent');
+    return opts.agent;
+  });
   const makeJira = opts.jiraFactory ?? ((cfg) => new JiraClient(cfg));
 
   app.addHook('onRequest', buildGuard(opts.port, opts.extraOrigins));
@@ -61,12 +68,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   let envCache: { at: number; value: Record<string, unknown> } | null = null;
   async function environment(force = false): Promise<Record<string, unknown>> {
     if (!force && envCache && Date.now() - envCache.at < 60_000) return envCache.value;
-    const [claude, git, gh] = await Promise.all([
-      opts.agent.version(store.data.settings.claudePath),
+    const settings = store.data.settings;
+    const [claude, codex, grokBuild, git, gh] = await Promise.all([
+      getAgent('claude').version(settings.claudePath).catch(() => null),
+      getAgent('codex').version(settings.codexPath).catch(() => null),
+      getAgent('grok-build').version(settings.grokBuildPath).catch(() => null),
       gitVersion(),
       ghVersion(),
     ]);
-    envCache = { at: Date.now(), value: { claude, git, gh } };
+    envCache = { at: Date.now(), value: { claude, codex, grokBuild, git, gh } };
     return envCache.value;
   }
 
@@ -129,6 +139,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       description: str(b.description),
       jiraKey: str(b.jiraKey),
       baseBranch: str(b.baseBranch),
+      agentProvider: normalizeAgentProvider(b.agentProvider),
     });
     return reply.code(201).send(task);
   });
@@ -175,6 +186,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const b = obj(req.body);
     updateSettings(store, {
       claudePath: str(b.claudePath),
+      codexPath: str(b.codexPath),
+      grokBuildPath: str(b.grokBuildPath),
       model: str(b.model),
       maxBudgetUsd: b.maxBudgetUsd === undefined ? undefined : Number(b.maxBudgetUsd),
       maxConcurrent: b.maxConcurrent === undefined ? undefined : Number(b.maxConcurrent),

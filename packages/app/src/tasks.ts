@@ -13,8 +13,10 @@ import {
   summarizeTool,
 } from './claude';
 import {
+  type AgentProvider,
   type Denial,
   HttpError,
+  normalizeAgentProvider,
   type NewTimelineItem,
   type Project,
   type Task,
@@ -43,7 +45,10 @@ import { TimelineLog } from './timeline';
 
 export interface TaskManagerDeps {
   store: StateStore;
-  agent: AgentAdapter;
+  /** 按 provider 取适配器（优先）。 */
+  getAgent?: (provider: AgentProvider) => AgentAdapter;
+  /** 兼容旧测试：恒定 FakeAgent。 */
+  agent?: AgentAdapter;
   dataDir: string;
   now?: () => Date;
 }
@@ -55,6 +60,7 @@ export interface CreateTaskInput {
   description?: string;
   jiraKey?: string;
   baseBranch?: string;
+  agentProvider?: AgentProvider;
 }
 
 export type Change = { type: 'task' | 'timeline' | 'projects' | 'settings'; id: string };
@@ -88,7 +94,7 @@ function clip(text: string, max: number): string {
 export class TaskManager extends EventEmitter {
   readonly timeline: TimelineLog;
   private readonly store: StateStore;
-  private readonly agent: AgentAdapter;
+  private readonly getAgent: (provider: AgentProvider) => AgentAdapter;
   private readonly dataDir: string;
   private readonly clock: () => Date;
   private readonly runs = new Map<string, RunState>();
@@ -98,7 +104,10 @@ export class TaskManager extends EventEmitter {
   constructor(deps: TaskManagerDeps) {
     super();
     this.store = deps.store;
-    this.agent = deps.agent;
+    this.getAgent = deps.getAgent ?? ((_: AgentProvider) => {
+      if (!deps.agent) throw new Error('TaskManager 需要 getAgent 或 agent');
+      return deps.agent;
+    });
     this.dataDir = deps.dataDir;
     this.clock = deps.now ?? (() => new Date());
     this.timeline = new TimelineLog(deps.dataDir);
@@ -223,10 +232,12 @@ export class TaskManager extends EventEmitter {
     }
 
     const now = this.nowIso();
+    const agentProvider = normalizeAgentProvider(input.agentProvider);
     const task: Task = {
       id,
       projectId: project.id,
       kind: input.kind,
+      agentProvider,
       title,
       description,
       jiraKey,
@@ -281,6 +292,7 @@ export class TaskManager extends EventEmitter {
       return;
     }
     const settings = this.store.data.settings;
+    const provider = normalizeAgentProvider(task.agentProvider);
     const prompt = task.pendingPrompt ?? CONTINUE_PROMPT;
     task.pendingPrompt = undefined;
     task.runCount += 1;
@@ -290,14 +302,28 @@ export class TaskManager extends EventEmitter {
     const dir = join(this.dataDir, 'tasks', task.id);
     mkdirSync(dir, { recursive: true });
     const settingsPath = join(dir, 'settings.json');
-    writeFileSync(settingsPath, JSON.stringify(buildClaudeSettings(project, task.approvedRules), null, 2), 'utf8');
+    if (provider === 'claude') {
+      writeFileSync(settingsPath, JSON.stringify(buildClaudeSettings(project, task.approvedRules), null, 2), 'utf8');
+    } else {
+      writeFileSync(settingsPath, '{}', 'utf8');
+      if (task.runCount === 1) {
+        this.note(task, '本 Agent 第一刀无 Claude 级权限拦截');
+      }
+    }
 
     this.log(task, { type: 'prompt', run: task.runCount, text: clip(prompt, MAX_TEXT) });
+
+    const binaryPath =
+      provider === 'claude'
+        ? settings.claudePath || undefined
+        : provider === 'codex'
+          ? settings.codexPath || undefined
+          : settings.grokBuildPath || undefined;
 
     const run: RunState = { stopRequested: false, toolUses: new Map() };
     this.runs.set(task.id, run);
     try {
-      run.proc = this.agent.start(
+      run.proc = this.getAgent(provider).start(
         {
           cwd: task.worktreePath,
           prompt,
@@ -306,13 +332,13 @@ export class TaskManager extends EventEmitter {
           settingsPath,
           model: settings.model || undefined,
           maxBudgetUsd: settings.maxBudgetUsd,
-          claudePath: settings.claudePath || undefined,
+          binaryPath,
         },
         (m) => this.onMessage(task, run, m),
       );
     } catch (err) {
       this.runs.delete(task.id);
-      this.failTask(task, `无法启动 Claude：${(err as Error).message}`);
+      this.failTask(task, `无法启动 ${provider}：${(err as Error).message}`);
       return;
     }
     void run.proc.done.then((exit) => this.onExit(task, run, exit));
@@ -384,7 +410,7 @@ export class TaskManager extends EventEmitter {
     const budget = this.store.data.settings.maxBudgetUsd;
     if (result.subtype === 'error_max_budget_usd') return `这一轮花费超过了单次预算上限 $${budget}，已自动停止。可以在「设置」里调高预算，然后点「继续」`;
     if (result.subtype === 'error_max_turns') return '这一轮对话轮数达到上限，已自动停止。点「继续」可以接着做';
-    return result.text.trim() || `Claude 没有正常完成（${result.subtype || '未知原因'}）`;
+    return result.text.trim() || `Agent 没有正常完成（${result.subtype || '未知原因'}）`;
   }
 
   private onExit(task: Task, run: RunState, exit: AgentExit): void {

@@ -1,7 +1,18 @@
 import { useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { Task } from '../types';
+import type { AgentProvider, Task } from '../types';
+
+const AGENT_LABEL: Record<AgentProvider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  'grok-build': 'Grok Build',
+};
+
+function agentLabel(v: unknown): string {
+  const p: AgentProvider = v === 'codex' || v === 'grok-build' || v === 'claude' ? v : 'claude';
+  return AGENT_LABEL[p];
+}
 import { IDLE_STATUSES, KIND_LABEL, STATUS_LABEL, money } from '../util';
 import ChangesTab from './ChangesTab';
 import DeliverTab from './DeliverTab';
@@ -48,6 +59,7 @@ export default function TaskDetail({ task }: { task: Task }) {
         </div>
         <div className="detail-meta muted small">
           <span>{project?.name ?? task.projectId}</span>
+          <span>Agent · {agentLabel(task.agentProvider)}</span>
           <span className="mono" title="任务分支">{task.branch}</span>
           <span>基于 {task.baseBranch}</span>
           <span>{money(task.costUsd)} · {task.turns} 轮 · 共 {task.runCount} 次运行</span>
@@ -103,7 +115,7 @@ export default function TaskDetail({ task }: { task: Task }) {
             rows={2}
             value={text}
             disabled={!idle}
-            placeholder={idle ? '追问或给 Claude 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）' : running ? 'Claude 正在工作，完成后可以追问' : '当前状态不能追问'}
+            placeholder={idle ? `追问或给 ${agentLabel(task.agentProvider)} 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）` : running ? `${agentLabel(task.agentProvider)} 正在工作，完成后可以追问` : '当前状态不能追问'}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

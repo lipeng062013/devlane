@@ -10,10 +10,13 @@ export interface AgentStart {
   sessionId: string;
   /** true 表示续接已有会话（--resume），false 表示新建（--session-id）。 */
   resume: boolean;
-  /** 权限文件路径（--settings）。 */
+  /** 权限文件路径（--settings）。Claude 用；其他 Agent 可忽略。 */
   settingsPath: string;
   model?: string;
   maxBudgetUsd?: number;
+  /** 可执行文件路径（优先）。 */
+  binaryPath?: string;
+  /** @deprecated 请用 binaryPath；保留兼容旧调用。 */
   claudePath?: string;
 }
 
@@ -48,7 +51,7 @@ export type AgentMessage =
 
 export interface AgentAdapter {
   start(opts: AgentStart, onMessage: (m: AgentMessage) => void): AgentProcess;
-  version(claudePath?: string): Promise<string | null>;
+  version(binaryPath?: string): Promise<string | null>;
 }
 
 // ---------- 输出解析 ----------
@@ -187,7 +190,7 @@ export interface ClaudeBinary {
   shell: boolean;
 }
 
-function findOnPath(names: string[]): string | null {
+export function findOnPath(names: string[]): string | null {
   const dirs = (process.env.PATH ?? process.env.Path ?? '').split(delimiter).filter(Boolean);
   for (const dir of dirs) {
     for (const name of names) {
@@ -196,6 +199,13 @@ function findOnPath(names: string[]): string | null {
     }
   }
   return null;
+}
+
+export function resolveBinary(names: string[], custom?: string): ClaudeBinary | null {
+  const isWin = process.platform === 'win32';
+  const found = custom ? (existsSync(custom) ? custom : null) : findOnPath(names);
+  if (!found) return null;
+  return { command: found, shell: isWin && /\.(cmd|bat)$/i.test(found) };
 }
 
 export function resolveClaude(custom?: string): ClaudeBinary | null {
@@ -236,7 +246,7 @@ export function killTree(child: ChildProcess): void {
 
 export class ClaudeAgent implements AgentAdapter {
   start(opts: AgentStart, onMessage: (m: AgentMessage) => void): AgentProcess {
-    const bin = resolveClaude(opts.claudePath);
+    const bin = resolveClaude(opts.binaryPath ?? opts.claudePath);
     if (!bin) {
       return {
         done: Promise.resolve({ code: null, stderr: '找不到 claude 命令。请先安装 Claude Code，或在「设置」里填写它的路径。', killed: false }),
@@ -292,8 +302,8 @@ export class ClaudeAgent implements AgentAdapter {
     };
   }
 
-  version(claudePath?: string): Promise<string | null> {
-    const bin = resolveClaude(claudePath);
+  version(binaryPath?: string): Promise<string | null> {
+    const bin = resolveClaude(binaryPath);
     if (!bin) return Promise.resolve(null);
     return new Promise((resolve) => {
       const command = bin.shell ? quoteShellArg(bin.command) : bin.command;

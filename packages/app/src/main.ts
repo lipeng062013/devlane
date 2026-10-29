@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app';
-import { ClaudeAgent } from './claude';
+import { createAgentRegistry } from './agents/registry';
 import { StateStore } from './store';
 import { TaskManager } from './tasks';
 
@@ -20,10 +20,10 @@ async function main(): Promise<void> {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error(`端口不合法：${port}`);
 
   const store = new StateStore(join(dataDir, 'state.json'));
-  const agent = new ClaudeAgent();
-  const manager = new TaskManager({ store, agent, dataDir });
+  const registry = createAgentRegistry();
+  const manager = new TaskManager({ store, getAgent: (p) => registry.getAgent(p), dataDir });
   const extraOrigins = (process.env.DEVLANE_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const app = buildApp({ store, manager, agent, port, webDir, extraOrigins, logger: false });
+  const app = buildApp({ store, manager, getAgent: (p) => registry.getAgent(p), port, webDir, extraOrigins, logger: false });
 
   try {
     // 只监听本机，这是安全模型的一部分，不提供修改入口
