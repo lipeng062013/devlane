@@ -343,8 +343,15 @@ describe('设置', () => {
     expect(res.json()).toMatchObject({ maxBudgetUsd: 5, maxConcurrent: 3, model: 'sonnet', editorCommand: 'cursor' });
   });
 
+  it('预算填 0 表示无上限', async () => {
+    const res = await send('PUT', '/api/settings', { maxBudgetUsd: 0 });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().maxBudgetUsd).toBe(0);
+  });
+
   it.each([
-    [{ maxBudgetUsd: 0 }, '预算'],
+    [{ maxBudgetUsd: 0.05 }, '预算'],
+    [{ maxBudgetUsd: -1 }, '预算'],
     [{ maxBudgetUsd: 1000 }, '预算'],
     [{ maxConcurrent: 0 }, '任务数'],
     [{ maxConcurrent: 99 }, '任务数'],

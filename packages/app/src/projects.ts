@@ -128,7 +128,10 @@ export function updateSettings(store: StateStore, input: SettingsInput): Setting
   }
   if (input.maxBudgetUsd !== undefined) {
     const v = Number(input.maxBudgetUsd);
-    if (!Number.isFinite(v) || v < 0.1 || v > 100) throw new HttpError(400, '单次预算需要在 0.1 到 100 美元之间');
+    // 0 = 不传 --max-budget-usd，表示单次运行无上限
+    if (!Number.isFinite(v) || v < 0 || (v > 0 && v < 0.1) || v > 100) {
+      throw new HttpError(400, '单次预算需要在 0.1 到 100 美元之间，填 0 表示无上限');
+    }
     s.maxBudgetUsd = v;
   }
   if (input.maxConcurrent !== undefined) {

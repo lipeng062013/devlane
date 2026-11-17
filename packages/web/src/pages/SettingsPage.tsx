@@ -127,8 +127,8 @@ function GeneralSettings() {
           <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="例如 sonnet、opus" />
         </label>
         <label>
-          单次运行预算上限（美元）
-          <input type="number" min={0.1} max={100} step={0.5} value={budget} onChange={(e) => setBudget(e.target.value)} />
+          单次运行预算上限（美元，0 = 无上限）
+          <input type="number" min={0} max={100} step={0.5} value={budget} onChange={(e) => setBudget(e.target.value)} />
         </label>
       </div>
       <div className="form-row">
@@ -141,7 +141,7 @@ function GeneralSettings() {
           <input value={editor} onChange={(e) => setEditor(e.target.value)} placeholder="code" />
         </label>
       </div>
-      <p className="muted small">预算是 Claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。</p>
+      <p className="muted small">预算是 Claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。填 0 表示不设上限。</p>
       <div className="form-actions">
         <span className="spacer" />
         <button

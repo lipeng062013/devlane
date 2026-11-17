@@ -119,6 +119,10 @@ describe('buildClaudeArgs', () => {
     expect(args).toEqual(expect.arrayContaining(['--model', 'provider/claude-x[1m]', '--max-budget-usd', '2.5']));
   });
 
+  it('预算为 0 时不传上限参数', () => {
+    expect(buildClaudeArgs({ ...base, maxBudgetUsd: 0 }).join(' ')).not.toContain('max-budget-usd');
+  });
+
   it('模型名含 shell 特殊字符时拒绝', () => {
     expect(() => buildClaudeArgs({ ...base, model: 'x & calc' })).toThrow();
     expect(isValidModel('opus')).toBe(true);
