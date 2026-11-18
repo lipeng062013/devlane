@@ -8,6 +8,7 @@ import type {
   Project,
   PublicSettings,
   RepoInfo,
+  Capability,
   Task,
   TaskPriority,
   TimelineItem,
@@ -60,6 +61,9 @@ export interface ProjectInput {
 export const api = {
   state: () => request<AppState>('GET', '/api/state'),
   env: (refresh = false) => request<EnvInfo>('GET', `/api/env${refresh ? '?refresh=1' : ''}`),
+  capabilities: (projectId: string) => request<{ projectId: string; items: Capability[] }>('GET', `/api/capabilities?projectId=${enc(projectId)}`),
+  models: (provider: string) =>
+    request<{ provider: string; models: Array<{ id: string; isDefault: boolean; label?: string }> }>('GET', `/api/models?provider=${enc(provider)}`),
 
   inspectRepo: (path: string) => request<RepoInfo>('POST', '/api/projects/inspect', { path }),
   addProject: (input: ProjectInput) => request<Project>('POST', '/api/projects', input),
@@ -71,7 +75,8 @@ export const api = {
     request<Task>('PATCH', `/api/tasks/${enc(id)}`, patch),
   timeline: (id: string, after = 0) => request<{ items: TimelineItem[] }>('GET', `/api/tasks/${enc(id)}/timeline?after=${after}`),
   changes: (id: string) => request<ChangeSet>('GET', `/api/tasks/${enc(id)}/changes`),
-  message: (id: string, text: string) => request<Task>('POST', `/api/tasks/${enc(id)}/message`, { text }),
+  message: (id: string, text: string, run?: { model?: string; effort?: string }) =>
+    request<Task>('POST', `/api/tasks/${enc(id)}/message`, { text, model: run?.model ?? '', effort: run?.effort ?? '' }),
   allow: (id: string, denialIds: string[], mode: 'exact' | 'prefix') =>
     request<Task>('POST', `/api/tasks/${enc(id)}/allow`, { denialIds, mode }),
   ignore: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/ignore`),
@@ -79,11 +84,16 @@ export const api = {
   runTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test`),
   stopTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test/stop`),
   commit: (id: string, message: string) => request<Task>('POST', `/api/tasks/${enc(id)}/commit`, { message }),
-  openPr: (id: string, title: string, body: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body }),
+  prDraft: (id: string) => request<{ title: string; body: string; fromTemplate: boolean }>('GET', `/api/tasks/${enc(id)}/pr-draft`),
+  openPr: (id: string, title: string, body: string, base?: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body, base }),
+  repoBranches: (path: string) => request<RepoInfo>('POST', '/api/projects/inspect', { path }),
   refreshPrCheck: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr-check`),
   mergePr: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr-merge`),
   jiraComment: (id: string, force = true) => request<Task>('POST', `/api/tasks/${enc(id)}/jira-comment`, { force }),
   discard: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/discard`),
+  archiveTask: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/archive`),
+  unarchiveTask: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/unarchive`),
+  deleteTask: (id: string) => request<{ ok: true }>('DELETE', `/api/tasks/${enc(id)}`),
   openEditor: (id: string) => request<{ ok: true }>('POST', `/api/tasks/${enc(id)}/open-editor`),
 
   saveSettings: (input: Record<string, unknown>) => request<PublicSettings>('PUT', '/api/settings', input),

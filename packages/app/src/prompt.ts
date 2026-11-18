@@ -10,6 +10,14 @@ export const DEFAULT_FEATURE_PROMPT = "你在项目「{{projectName}}」的一�
 
 const DESCRIPTION_FALLBACK = '（没有补充描述，请根据标题和代码自行判断）';
 
+/** 不点名任何一家 Agent。勾选后每次运行都放在提示最前。 */
+export const POTETO_PREFIX = '使用 /pstack:poteto-mode 执行这个任务。先读取该 skill，再按它的 playbook 工作。';
+
+export function applyPoteto(prompt: string, usePoteto: boolean | undefined): string {
+  if (!usePoteto) return prompt;
+  return `${POTETO_PREFIX}\n\n${prompt}`;
+}
+
 function buildVars(
   project: Pick<Project, 'name' | 'testCommand'>,
   task: Pick<Task, 'kind' | 'title' | 'description' | 'jiraKey' | 'branch' | 'baseBranch'>,
@@ -45,14 +53,14 @@ export function applyPromptTemplate(template: string, vars: Record<string, strin
 /** 首次运行时发给 Agent 的任务说明。templates 对应 kind 非空则用自定义，否则 DEFAULT。 */
 export function buildInitialPrompt(
   project: Pick<Project, 'name' | 'testCommand'>,
-  task: Pick<Task, 'kind' | 'title' | 'description' | 'jiraKey' | 'branch' | 'baseBranch'>,
+  task: Pick<Task, 'kind' | 'title' | 'description' | 'jiraKey' | 'branch' | 'baseBranch' | 'usePoteto'>,
   templates?: PromptTemplates,
 ): string {
   const kind = task.kind === 'bug' ? 'bug' : 'feature';
   const custom = templates?.[kind]?.trim() ?? '';
   const template = custom || (kind === 'bug' ? DEFAULT_BUG_PROMPT : DEFAULT_FEATURE_PROMPT);
   const vars = buildVars(project, task, { descriptionFallback: !custom });
-  return applyPromptTemplate(template, vars);
+  return applyPoteto(applyPromptTemplate(template, vars), task.usePoteto);
 }
 
 export function buildAllowedPrompt(commands: string[]): string {

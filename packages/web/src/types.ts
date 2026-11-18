@@ -12,6 +12,20 @@ export interface PrCheckSnapshot {
 }
 export type TaskKind = 'bug' | 'feature';
 
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
+  none: '不思考',
+  minimal: '最轻',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '很高',
+  max: '最高',
+};
+
 export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
 
 export type TaskStatus =
@@ -23,6 +37,7 @@ export type TaskStatus =
   | 'failed'
   | 'committed'
   | 'pr_opened'
+  | 'archived'
   | 'discarded';
 
 export interface Project {
@@ -60,6 +75,9 @@ export interface Task {
   projectId: string;
   kind: TaskKind;
   agentProvider?: AgentProvider;
+  model?: string;
+  effort?: ReasoningEffort;
+  usePoteto?: boolean;
   title: string;
   description: string;
   jiraKey?: string;
@@ -91,7 +109,7 @@ export type TimelineItem =
   | { seq: number; ts: string; type: 'tool'; toolUseId: string; name: string; summary: string; detail?: string }
   | { seq: number; ts: string; type: 'tool_result'; toolUseId: string; ok: boolean; text: string }
   | { seq: number; ts: string; type: 'denied'; toolUseId: string; tool: string; summary: string }
-  | { seq: number; ts: string; type: 'result'; ok: boolean; text: string; costUsd: number; turns: number; durationMs: number }
+  | { seq: number; ts: string; type: 'result'; ok: boolean; text: string; costUsd: number; costKnown?: boolean; turns: number; durationMs: number }
   | { seq: number; ts: string; type: 'note'; level: 'info' | 'error'; text: string };
 
 export interface FileChange {
@@ -167,6 +185,15 @@ export interface JiraIssueDetail extends JiraIssueSummary {
   comments: Array<{ author: string; created: string; body: string }>;
 }
 
+export type CapabilityKind = 'skill' | 'mcp';
+export type CapabilityScope = 'project' | 'user' | 'machine';
+export interface Capability {
+  kind: CapabilityKind;
+  name: string;
+  scope: CapabilityScope;
+  source: string;
+}
+
 export interface NewTaskInput {
   projectId: string;
   kind: TaskKind;
@@ -177,6 +204,9 @@ export interface NewTaskInput {
   agentProvider: AgentProvider;
   tags?: string[];
   priority?: TaskPriority;
+  model?: string;
+  effort?: ReasoningEffort;
+  usePoteto?: boolean;
 }
 
 export interface TaskDraft {

@@ -70,6 +70,7 @@ export const result = (over: Partial<Extract<AgentMessage, { kind: 'result' }>> 
   subtype: 'success',
   text: '完成',
   costUsd: 0.25,
+  costKnown: true,
   turns: 3,
   durationMs: 1200,
   sessionId: 's',

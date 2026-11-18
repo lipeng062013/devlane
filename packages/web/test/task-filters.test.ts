@@ -84,6 +84,13 @@ describe('taskMatchesFilters', () => {
     const f = { ...base, statusSeg: 'active' as const, projectId: 'P1' };
     expect([active, done, other].filter((t) => taskMatchesFilters(t, f)).map((t) => t.id)).toEqual(['T1']);
   });
+
+  it('archived leaves 进行中 and stays in 已结束', () => {
+    const archived = task({ id: 'T1', title: 'a', status: 'archived' });
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'active' })).toBe(false);
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'done' })).toBe(true);
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'all' })).toBe(true);
+  });
 });
 
 describe('collectTagOptions / normalizeTagsClient / mapJiraPriority', () => {

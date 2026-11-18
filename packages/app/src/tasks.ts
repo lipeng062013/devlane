@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type AgentAdapter,
@@ -9,6 +9,7 @@ import {
   type AgentMessage,
   type AgentProcess,
   killTree,
+  isValidModel,
   quoteShellArg,
   summarizeTool,
 } from './claude';
@@ -16,7 +17,9 @@ import {
   type AgentProvider,
   type Denial,
   HttpError,
+  type ReasoningEffort,
   normalizeAgentProvider,
+  normalizeEffort,
   type NewTimelineItem,
   type Project,
   type PrCheckSnapshot,
@@ -37,15 +40,18 @@ import {
   parsePrNumber,
   hasUncommitted,
   inspectRepo,
+  installHusky,
   linkNodeModules,
   pushBranch,
   removeWorktree,
   worktreesRootFor,
 } from './git';
 import { type JiraApi, JiraClient } from './jira';
+import { validBranch } from './projects';
 import { canMergePr, mergeBlockReason, mergePullRequest } from './pr-merge';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
-import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
+import { workspaceIsManaged } from './agents/capabilities';
+import { applyPoteto, CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
 import type { StateStore } from './store';
 import { normalizePriority, normalizeTags } from './task-meta';
 import { TimelineLog } from './timeline';
@@ -85,6 +91,15 @@ export interface CreateTaskInput {
   agentProvider?: AgentProvider;
   tags?: string[];
   priority?: TaskPriority;
+  model?: string;
+  effort?: ReasoningEffort;
+  usePoteto?: boolean;
+}
+
+export interface SendMessageInput {
+  text: string;
+  model?: string;
+  effort?: ReasoningEffort | '';
 }
 
 export type Change = { type: 'task' | 'timeline' | 'projects' | 'settings'; id: string };
@@ -113,6 +128,13 @@ function slugify(text: string): string {
 
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n…（已截断）` : text;
+}
+
+function cleanModel(model: string | undefined): string | undefined {
+  const value = model?.trim() ?? '';
+  if (!value) return undefined;
+  if (!isValidModel(value)) throw new HttpError(400, '模型名包含不允许的字符');
+  return value;
 }
 
 export class TaskManager extends EventEmitter {
@@ -260,6 +282,8 @@ export class TaskManager extends EventEmitter {
       const note = await linkNodeModules(info.root, worktreePath);
       if (note) notes.push(note);
     }
+    const huskyNote = await installHusky(info.root, worktreePath);
+    if (huskyNote) notes.push(huskyNote);
 
     const now = this.nowIso();
     const agentProvider = normalizeAgentProvider(input.agentProvider);
@@ -286,6 +310,9 @@ export class TaskManager extends EventEmitter {
       notes,
       tags: normalizeTags(input.tags),
       priority: normalizePriority(input.priority),
+      model: cleanModel(input.model),
+      effort: normalizeEffort(input.effort),
+      usePoteto: input.usePoteto === true,
       createdAt: now,
       updatedAt: now,
     };
@@ -337,7 +364,8 @@ export class TaskManager extends EventEmitter {
     }
     const settings = this.store.data.settings;
     const provider = normalizeAgentProvider(task.agentProvider);
-    const prompt = task.pendingPrompt ?? CONTINUE_PROMPT;
+    const rawPrompt = task.pendingPrompt ?? CONTINUE_PROMPT;
+    const prompt = task.runCount === 0 ? rawPrompt : applyPoteto(rawPrompt, task.usePoteto);
     task.pendingPrompt = undefined;
     task.runCount += 1;
     task.status = 'running';
@@ -350,9 +378,6 @@ export class TaskManager extends EventEmitter {
       writeFileSync(settingsPath, JSON.stringify(buildClaudeSettings(project, task.approvedRules), null, 2), 'utf8');
     } else {
       writeFileSync(settingsPath, '{}', 'utf8');
-      if (task.runCount === 1) {
-        this.note(task, '本 Agent 第一刀无 Claude 级权限拦截');
-      }
     }
 
     this.log(task, { type: 'prompt', run: task.runCount, text: clip(prompt, MAX_TEXT) });
@@ -374,9 +399,11 @@ export class TaskManager extends EventEmitter {
           sessionId: task.sessionId,
           resume: task.sessionStarted,
           settingsPath,
-          model: settings.model || undefined,
+          model: task.model || settings.model || undefined,
+          effort: task.effort,
           maxBudgetUsd: settings.maxBudgetUsd,
           binaryPath,
+          trustWorkspace: provider === 'grok-build' && workspaceIsManaged(task.worktreePath, [this.worktreesRoot, ...(project ? [worktreesRootFor(project.path, this.dataDir)] : [])]),
         },
         (m) => this.onMessage(task, run, m),
       );
@@ -436,13 +463,18 @@ export class TaskManager extends EventEmitter {
       }
       case 'result':
         run.result = m;
-        task.costUsd += m.costUsd;
+        if (m.costKnown) task.costUsd += m.costUsd;
         task.turns += m.turns;
+        if (m.sessionId) {
+          task.sessionId = m.sessionId;
+          task.sessionStarted = true;
+        }
         this.log(task, {
           type: 'result',
           ok: m.ok,
           text: clip(m.text, MAX_TEXT),
           costUsd: m.costUsd,
+          costKnown: m.costKnown,
           turns: m.turns,
           durationMs: m.durationMs,
         });
@@ -473,7 +505,7 @@ export class TaskManager extends EventEmitter {
     } else {
       task.status = 'failed';
       const tail = exit.stderr.trim().split('\n').slice(-5).join('\n');
-      task.lastError = tail || `Claude 异常退出（退出码 ${exit.code ?? '无'}）`;
+      task.lastError = tail || `Agent 异常退出（退出码 ${exit.code ?? '无'}）`;
       this.note(task, task.lastError, 'error');
     }
     this.touch(task);
@@ -482,15 +514,21 @@ export class TaskManager extends EventEmitter {
 
   // ---------- 与 Claude 交互 ----------
 
-  async sendMessage(taskId: string, text: string): Promise<Task> {
+  async sendMessage(taskId: string, input: string | SendMessageInput): Promise<Task> {
     const task = this.getTask(taskId);
-    if (!REVIEWABLE.has(task.status)) throw new HttpError(409, `当前状态（${task.status}）不能追问`);
-    const msg = (text ?? '').trim();
+    if (task.status === 'archived') throw new HttpError(409, '任务已归档，先取消归档再追问');
+    const live = task.status === 'running' || task.status === 'queued';
+    if (!live && !REVIEWABLE.has(task.status)) throw new HttpError(409, `当前状态（${task.status}）不能追问`);
+    const body: SendMessageInput = typeof input === 'string' ? { text: input } : input;
+    const msg = (body.text ?? '').trim();
     if (!msg) throw new HttpError(400, '内容不能为空');
     if (msg.length > MAX_TEXT) throw new HttpError(400, `内容不能超过 ${MAX_TEXT} 字`);
+    if (body.model !== undefined) task.model = cleanModel(body.model);
+    if (body.effort !== undefined) task.effort = body.effort === '' ? undefined : normalizeEffort(body.effort);
     for (const d of task.denials) if (d.status === 'pending') d.status = 'ignored';
-    task.pendingPrompt = msg;
-    task.status = 'queued';
+    task.pendingPrompt = task.pendingPrompt && live ? `${task.pendingPrompt}\n\n${msg}` : msg;
+    if (!live) task.status = 'queued';
+    this.log(task, { type: 'prompt', run: task.runCount + (live ? 1 : 0), text: clip(msg, MAX_TEXT) });
     this.touch(task);
     this.pump();
     return task;
@@ -557,8 +595,9 @@ export class TaskManager extends EventEmitter {
   }
 
   private ensureIdle(task: Task, what: string): void {
-    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, `Claude 还在工作，请先停止或等它完成再${what}`);
+    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, `Agent 还在工作，请先停止或等它完成再${what}`);
     if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    if (task.status === 'archived') throw new HttpError(409, '任务已归档');
   }
 
   async commit(taskId: string, message: string): Promise<Task> {
@@ -580,7 +619,7 @@ export class TaskManager extends EventEmitter {
     });
   }
 
-  async openPullRequest(taskId: string, input: { title: string; body: string }): Promise<Task> {
+  async openPullRequest(taskId: string, input: { title: string; body: string; base?: string }): Promise<Task> {
     const task = this.getTask(taskId);
     this.ensureIdle(task, '创建 PR');
     const title = (input.title ?? '').trim();
@@ -589,6 +628,9 @@ export class TaskManager extends EventEmitter {
     return this.exclusive(taskId, async () => {
       if (await hasUncommitted(task.worktreePath)) throw new HttpError(409, '还有未提交的改动，请先提交，避免 PR 缺内容');
       const project = this.getProject(task.projectId);
+      const base = (input.base ?? '').trim() || task.baseBranch;
+      if (!validBranch(base)) throw new HttpError(400, `目标分支名不合法：${base}`);
+      if (base === task.branch) throw new HttpError(400, '目标分支不能是任务自己的分支');
       const remotes = (await git(project.path, ['remote'])).split('\n').map((s) => s.trim()).filter(Boolean);
       if (!remotes.includes('origin')) throw new HttpError(400, '仓库没有名为 origin 的远程，无法推送');
       const checkGh = this.openPrDeps?.ghVersion ?? ghVersion;
@@ -600,12 +642,12 @@ export class TaskManager extends EventEmitter {
       } catch (err) {
         throw new HttpError(502, `推送失败：${(err as Error).message}`);
       }
-      this.note(task, `已推送分支 ${task.branch}`);
+      this.note(task, `已推送分支 ${task.branch}，PR 目标 ${base}`);
       let url: string;
       try {
         const doCreate = this.openPrDeps?.createPullRequest ?? createPullRequest;
         url = await doCreate(task.worktreePath, {
-          base: task.baseBranch,
+          base,
           head: task.branch,
           title,
           body: (input.body ?? '').slice(0, 20_000),
@@ -848,6 +890,53 @@ export class TaskManager extends EventEmitter {
       this.touch(task);
       this.pump();
       return task;
+    });
+  }
+
+  /** 藏到已结束，不删工作区。运行中的任务要先停止。 */
+  async archive(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (task.status === 'archived') return task;
+    if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, '请先停止任务再归档');
+    return this.exclusive(taskId, async () => {
+      task.statusBeforeArchive = task.status;
+      task.status = 'archived';
+      task.pendingPrompt = undefined;
+      this.note(task, '已归档：工作区仍保留，可在「已结束」里取消归档');
+      this.touch(task);
+      return task;
+    });
+  }
+
+  async unarchive(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (task.status !== 'archived') throw new HttpError(409, '任务不在归档中');
+    const previous = task.statusBeforeArchive;
+    task.status = previous && previous !== 'archived' && previous !== 'running' && previous !== 'queued' ? previous : 'review';
+    task.statusBeforeArchive = undefined;
+    this.note(task, '已取消归档');
+    this.touch(task);
+    return task;
+  }
+
+  /**
+   * 从列表和磁盘记录里去掉这个任务。
+   * 工作区还在时先走 discard 的清理。第二次调用是 404。
+   */
+  async deleteTask(taskId: string): Promise<{ ok: true }> {
+    const task = this.getTask(taskId);
+    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, '请先停止任务再删除');
+    if (task.status !== 'discarded') await this.discard(taskId);
+    return this.exclusive(taskId, async () => {
+      const idx = this.store.data.tasks.findIndex((t) => t.id === taskId);
+      if (idx >= 0) this.store.data.tasks.splice(idx, 1);
+      this.store.save();
+      rmSync(join(this.dataDir, 'tasks', taskId), { recursive: true, force: true });
+      this.timeline.forget(taskId);
+      this.notify('task', taskId);
+      this.pump();
+      return { ok: true as const };
     });
   }
 

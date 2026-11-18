@@ -27,7 +27,17 @@ export type TaskStatus =
   | 'failed'
   | 'committed'
   | 'pr_opened'
+  | 'archived'
   | 'discarded';
+
+/** 思考强度。和 grok --effort 的档位一致。空表示用 Agent 自己的默认。 */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+export function normalizeEffort(v: unknown): ReasoningEffort | undefined {
+  return typeof v === 'string' && (REASONING_EFFORTS as readonly string[]).includes(v) ? (v as ReasoningEffort) : undefined;
+}
 
 export interface Project {
   id: string;
@@ -71,6 +81,12 @@ export interface Task {
   kind: TaskKind;
   /** 执行该任务的 Agent；旧数据缺省按 claude 读 */
   agentProvider: AgentProvider;
+  /** 这一次以及下一次运行使用的模型。空则用设置里的模型，设置也空则用 Agent 默认。 */
+  model?: string;
+  /** 这一次以及下一次运行的思考强度。空则用 Agent 默认。 */
+  effort?: ReasoningEffort;
+  /** 为真时，每次发给 Agent 的提示都以 /pstack:poteto-mode 开头。 */
+  usePoteto?: boolean;
   title: string;
   description: string;
   jiraKey?: string;
@@ -83,6 +99,8 @@ export interface Task {
   branch: string;
   worktreePath: string;
   status: TaskStatus;
+  /** 归档前的状态。取消归档时还原，避免失败任务被收成待审阅。 */
+  statusBeforeArchive?: TaskStatus;
   /** Claude 会话 id，追问时用 --resume 续接。 */
   sessionId: string;
   /** 是否已经和 Claude 建立过会话（决定下一次用 --session-id 还是 --resume）。 */
@@ -134,7 +152,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  maxBudgetUsd: 3,
+  maxBudgetUsd: 0,
   maxConcurrent: 2,
   editorCommand: 'code',
 };
@@ -164,6 +182,8 @@ export type TimelineItem =
       ok: boolean;
       text: string;
       costUsd: number;
+      /** false 表示 CLI 没报告花费。0 只在报告了 0 时出现。 */
+      costKnown?: boolean;
       turns: number;
       durationMs: number;
     }

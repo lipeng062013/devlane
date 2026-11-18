@@ -335,7 +335,7 @@ describe('设置', () => {
 
   it('默认值', async () => {
     const s = (await get('/api/state')).json().settings;
-    expect(s).toMatchObject({ maxBudgetUsd: 3, maxConcurrent: 2, editorCommand: 'code', jira: null });
+    expect(s).toMatchObject({ maxBudgetUsd: 0, maxConcurrent: 2, editorCommand: 'code', jira: null });
   });
 
   it('修改通用设置', async () => {

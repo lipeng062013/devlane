@@ -9,6 +9,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   failed: '失败',
   committed: '已提交',
   pr_opened: '已开 PR',
+  archived: '已归档',
   discarded: '已丢弃',
 };
 

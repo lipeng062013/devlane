@@ -13,7 +13,7 @@ export interface ProjectInput {
   linkNodeModules?: boolean;
 }
 
-function validBranch(name: string): boolean {
+export function validBranch(name: string): boolean {
   return /^[\w./@-]+$/.test(name);
 }
 

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_BUG_PROMPT,
   DEFAULT_FEATURE_PROMPT,
+  POTETO_PREFIX,
+  applyPoteto,
   applyPromptTemplate,
   buildInitialPrompt,
 } from '../src/prompt';
@@ -33,6 +35,18 @@ afterEach(() => {
   for (const p of temps.splice(0)) rmSync(p, { recursive: true, force: true });
 });
 
+describe('applyPoteto', () => {
+  it('勾选后把 skill 要求放在提示最前，不点名 Agent', () => {
+    expect(applyPoteto('正文', true).startsWith(POTETO_PREFIX)).toBe(true);
+    expect(applyPoteto('正文', true)).toContain('正文');
+    expect(applyPoteto('正文', false)).toBe('正文');
+    expect(POTETO_PREFIX).not.toMatch(/claude|grok|codex/i);
+    const wrapped = buildInitialPrompt(project, { ...bugTask, usePoteto: true });
+    expect(wrapped.startsWith(POTETO_PREFIX)).toBe(true);
+    expect(wrapped).toContain('求和结果错误');
+  });
+});
+
 describe('buildInitialPrompt / templates', () => {
   it('T1 自定义模板生效', () => {
     const out = buildInitialPrompt(project, bugTask, {
@@ -55,6 +69,7 @@ describe('buildInitialPrompt / templates', () => {
     expect(a).toContain('ABC-12');
     expect(a).toContain('node check.js');
     expect(a).toContain('不要执行 git commit、git push');
+    expect(a).not.toContain('/pstack:poteto-mode');
     expect(DEFAULT_BUG_PROMPT).toContain('{{title}}');
     expect(DEFAULT_FEATURE_PROMPT).toContain('{{title}}');
   });

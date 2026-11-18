@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, lstatSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -154,6 +154,20 @@ export async function linkNodeModules(repo: string, worktreePath: string): Promi
     return 'node_modules 没有被 .gitignore 忽略，为避免它进入提交，已取消链接';
   }
   return null;
+}
+
+/**
+ * 工作区只检出进 Git 的文件。.husky/_ 由 husky install 生成，不在仓库里。
+ * 项目自己有 Husky 时补装一次，否则提交前钩子会找不到 _/husky.sh。
+ */
+export async function installHusky(repo: string, worktreePath: string): Promise<string | null> {
+  const config = join(worktreePath, '.husky', 'pre-commit');
+  const installed = join(worktreePath, '.husky', '_', 'husky.sh');
+  if (!existsSync(config) || existsSync(installed)) return null;
+  const source = join(repo, '.husky', '_');
+  if (!existsSync(join(source, 'husky.sh'))) return '工作区有 Husky 钩子，主仓库没有 .husky/_。请先在主仓库执行 npm install';
+  cpSync(source, join(worktreePath, '.husky', '_'), { recursive: true });
+  return existsSync(installed) ? null : '复制 .husky/_ 后仍然没有 husky.sh';
 }
 
 /** 只移除链接本身，不碰链接指向的真实目录。 */

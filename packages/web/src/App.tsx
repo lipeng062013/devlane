@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from './api';
 import NewTaskDialog from './components/NewTaskDialog';
 import { Ctx, type AppCtx, type View } from './ctx';
@@ -10,6 +10,19 @@ import { detectAgentTerminalToasts, syncStatusMap } from './agent-terminal-toast
 import type { AppState, EnvInfo, TaskDraft, TaskStatus } from './types';
 
 const VIEWS: View[] = ['tasks', 'jira', 'projects', 'settings'];
+
+function RailIcon({ d }: { d: string }) {
+  return (
+    <svg className="rail-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
+      <path d={d} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const iconTask = <RailIcon d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />;
+const iconJira = <RailIcon d="M4 7h16M4 12h10M4 17h7" />;
+const iconFolder = <RailIcon d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10z" />;
+const iconGear = <RailIcon d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM12 3.5v2M12 18.5v2M4.9 6.5l1.5 1.5M17.6 16l1.5 1.5M3.5 12h2M18.5 12h2M4.9 17.5l1.5-1.5M17.6 8l1.5-1.5" />;
 
 function parseHash(): { view: View; taskId: string | null } {
   const [, view, id] = window.location.hash.split('/');
@@ -141,29 +154,30 @@ export default function App() {
 
   const needYou = state.tasks.filter((t) => t.status === 'needs_you').length;
   const running = state.tasks.filter((t) => t.status === 'running').length;
-  const nav: Array<[View, string, number]> = [
-    ['tasks', '任务', needYou],
-    ['jira', 'Jira', 0],
-    ['projects', '项目', 0],
-    ['settings', '设置', 0],
+  const nav: Array<[View, string, ReactNode]> = [
+    ['tasks', '任务', iconTask],
+    ['jira', 'Jira', iconJira],
+    ['projects', '项目', iconFolder],
+    ['settings', '设置', iconGear],
   ];
 
   return (
     <Ctx.Provider value={ctx}>
       <div className="app">
-        <nav className="rail">
-          <div className="brand">DevLane</div>
-          {nav.map(([id, label, badge]) => (
-            <button key={id} className={`rail-item ${route.view === id ? 'on' : ''}`} onClick={() => go(id)}>
-              {label}
-              {badge > 0 && <span className="badge">{badge}</span>}
+        <nav className="rail" aria-label="主导航">
+          <div className="brand-mark" title="DevLane">D</div>
+          {nav.map(([id, label, icon]) => (
+            <button key={id} className={`rail-item ${route.view === id ? 'on' : ''}`} onClick={() => go(id)} aria-current={route.view === id ? 'page' : undefined}>
+              {icon}
+              <span className="rail-label">{label}</span>
+              {id === 'tasks' && needYou > 0 && <span className="badge">{needYou}</span>}
             </button>
           ))}
           <span className="spacer" />
           <div className="rail-foot muted small">
-            {running > 0 && <div>{running} 个运行中</div>}
+            {running > 0 && <div title={`${running} 个运行中`}>{running}</div>}
             <div>
-              {env === null ? '检测中…' : env.claude ? 'Claude 就绪' : <button className="link bad-text" onClick={() => go('settings')}>没找到 claude</button>}
+              {env === null ? '…' : env.claude ? <span title="Claude 就绪">●</span> : <button className="link bad-text rail-label" title="没找到 claude" onClick={() => go('settings')}>未找到</button>}
             </div>
           </div>
         </nav>

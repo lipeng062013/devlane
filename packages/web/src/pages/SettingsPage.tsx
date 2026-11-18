@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import CapabilityPanel from '../components/CapabilityPanel';
 import { useApp } from '../ctx';
 
 function JiraSettings() {
@@ -272,6 +273,7 @@ export default function SettingsPage() {
   return (
     <div className="page-pad">
       <h1>设置</h1>
+      <CapabilityPanel />
       <section className="card">
         <div className="card-head">
           <h3>环境检查</h3>

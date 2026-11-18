@@ -6,10 +6,12 @@ import {
   type AgentProcess,
   type AgentStart,
   type ClaudeBinary,
+  isValidModel,
   killTree,
   quoteShellArg,
   resolveBinary,
 } from '../claude';
+import { readCodexModels } from './local-models';
 
 /** PATH / 设置里常见的 Codex CLI 文件名（Windows 含 .cmd）。 */
 const CODEX_NAMES = process.platform === 'win32'
@@ -39,8 +41,12 @@ export class CodexAgent implements AgentAdapter {
       };
     }
 
-    // 第一刀：非交互 exec + JSONL；参数以本机 `codex exec --help` 为准（猜过则标在 PR）
-    const rawArgs = ['exec', '--json', '-'];
+    const rawArgs = ['exec', '--json'];
+    if (opts.model) {
+      if (!isValidModel(opts.model)) throw new Error(`模型名包含不允许的字符：${opts.model}`);
+      rawArgs.push('--model', opts.model);
+    }
+    rawArgs.push('-');
     const args = bin.shell ? rawArgs.map(quoteShellArg) : rawArgs;
     const command = bin.shell ? quoteShellArg(bin.command) : bin.command;
 
@@ -55,6 +61,10 @@ export class CodexAgent implements AgentAdapter {
     child.stdin.end(opts.prompt);
 
     return wireLineTextProcess(child, onMessage);
+  }
+
+  listModels(): Promise<Array<{ id: string; isDefault: boolean; label?: string }>> {
+    return Promise.resolve(readCodexModels());
   }
 
   version(binaryPath?: string): Promise<string | null> {
@@ -78,6 +88,7 @@ export function wireLineTextProcess(
   let buffer = '';
   let stderr = '';
   let sawText = false;
+  const started = Date.now();
   child.stdout?.setEncoding('utf8');
   child.stdout?.on('data', (chunk: string) => {
     buffer += chunk;
@@ -111,8 +122,9 @@ export function wireLineTextProcess(
         subtype: killed ? 'killed' : code === 0 ? 'success' : 'error',
         text: sawText ? '' : stderr.slice(0, 2000),
         costUsd: 0,
-        turns: 0,
-        durationMs: 0,
+        costKnown: false,
+        turns: sawText ? 1 : 0,
+        durationMs: Date.now() - started,
         sessionId: '',
       });
       resolve({ code, stderr, killed });

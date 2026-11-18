@@ -1,5 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { readClaudeModels } from './agents/local-models';
 import { delimiter, join } from 'node:path';
 
 // ---------- 对外的适配器接口 ----------
@@ -13,9 +14,13 @@ export interface AgentStart {
   /** 权限文件路径（--settings）。Claude 用；其他 Agent 可忽略。 */
   settingsPath: string;
   model?: string;
+  /** 思考强度。Grok 传给 --effort。其他 Agent 可忽略。 */
+  effort?: string;
   maxBudgetUsd?: number;
   /** 可执行文件路径（优先）。 */
   binaryPath?: string;
+  /** 工作区由 DevLane 创建。Grok 据此加载项目 skill 和 MCP。 */
+  trustWorkspace?: boolean;
   /** @deprecated 请用 binaryPath；保留兼容旧调用。 */
   claudePath?: string;
 }
@@ -44,6 +49,8 @@ export type AgentMessage =
       subtype: string;
       text: string;
       costUsd: number;
+      /** false 表示 CLI 没报告花费。不要把缺省当成 $0。 */
+      costKnown: boolean;
       turns: number;
       durationMs: number;
       sessionId: string;
@@ -52,6 +59,7 @@ export type AgentMessage =
 export interface AgentAdapter {
   start(opts: AgentStart, onMessage: (m: AgentMessage) => void): AgentProcess;
   version(binaryPath?: string): Promise<string | null>;
+  listModels?(binaryPath?: string): Promise<Array<{ id: string; isDefault: boolean; label?: string }>>;
 }
 
 // ---------- 输出解析 ----------
@@ -112,6 +120,7 @@ export function parseClaudeLine(line: string): AgentMessage[] {
         subtype: String(o.subtype ?? ''),
         text: String(o.result ?? ''),
         costUsd: Number(o.total_cost_usd ?? 0),
+        costKnown: o.total_cost_usd !== undefined && o.total_cost_usd !== null && Number.isFinite(Number(o.total_cost_usd)),
         turns: Number(o.num_turns ?? 0),
         durationMs: Number(o.duration_ms ?? 0),
         sessionId: String(o.session_id ?? ''),
@@ -152,7 +161,7 @@ export function summarizeTool(name: string, input: Record<string, unknown>, cwd?
 
 // ---------- 启动参数 ----------
 
-const MODEL_PATTERN = /^[\w.\-[\]/:]+$/;
+const MODEL_PATTERN = /^[\w.\-[\]/:@:]+$/;
 
 export function isValidModel(model: string): boolean {
   return MODEL_PATTERN.test(model);
@@ -300,6 +309,10 @@ export class ClaudeAgent implements AgentAdapter {
         killTree(child);
       },
     };
+  }
+
+  listModels(): Promise<Array<{ id: string; isDefault: boolean; label?: string }>> {
+    return Promise.resolve(readClaudeModels());
   }
 
   version(binaryPath?: string): Promise<string | null> {

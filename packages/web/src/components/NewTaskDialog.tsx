@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../ctx';
-import type { AgentProvider, Task, TaskDraft, TaskKind, TaskPriority } from '../types';
+import type { AgentProvider, ReasoningEffort, Task, TaskDraft, TaskKind, TaskPriority } from '../types';
+import { EFFORT_LABEL, REASONING_EFFORTS } from '../types';
 import { PRIORITY_LABEL, normalizeTagsClient } from '../task-filters';
 import Modal from './Modal';
 
@@ -20,9 +21,28 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
   const [tags, setTags] = useState<string[]>(normalizeTagsClient(draft.tags));
   const [tagInput, setTagInput] = useState('');
   const [priority, setPriority] = useState<TaskPriority>(draft.priority ?? 'none');
+  const [model, setModel] = useState('');
+  const [modelOptions, setModelOptions] = useState<Array<{ id: string; isDefault: boolean; label?: string }>>([]);
+  const [effort, setEffort] = useState<ReasoningEffort | ''>('');
+  const [usePoteto, setUsePoteto] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const project = projects.find((p) => p.id === projectId);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModel('');
+    setModelOptions([]);
+    void api.models(agentProvider).then((res) => {
+      if (cancelled) return;
+      setModelOptions(res.models);
+      const preferred = res.models.find((m) => m.isDefault) ?? res.models[0];
+      if (preferred) setModel(preferred.id);
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [agentProvider]);
 
   if (projects.length === 0) {
     return (
@@ -56,6 +76,9 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         agentProvider,
         tags,
         priority,
+        model: model.trim() || undefined,
+        effort: effort || undefined,
+        usePoteto,
       }),
     );
     setBusy(false);
@@ -109,6 +132,34 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
               Grok Build
             </button>
           </div>
+        </label>
+        <div className="form-row">
+          <label>
+            模型（本机列表）
+            <select value={model} onChange={(e) => setModel(e.target.value)}>
+              {modelOptions.length === 0 && <option value="">这个 Agent 还读不到模型列表</option>}
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {(m.label ?? m.id) + (m.isDefault ? '（本机默认）' : '')}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            思考强度
+            <select value={effort} onChange={(e) => setEffort(e.target.value as ReasoningEffort | '')}>
+              <option value="">默认</option>
+              {REASONING_EFFORTS.map((level) => (
+                <option key={level} value={level}>
+                  {EFFORT_LABEL[level]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="check-line">
+          <input type="checkbox" checked={usePoteto} onChange={(e) => setUsePoteto(e.target.checked)} />
+          使用 /pstack:poteto-mode 执行
         </label>
         <label>
           标题
