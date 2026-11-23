@@ -1,6 +1,29 @@
-# DevLane
+<h1 align="center">DevLane</h1>
 
-给程序员自己用的 AI 任务台。描述一个缺陷或需求，DevLane 为它单独建一个 git worktree 和分支，让本机的 Claude Code 在里面干活。你看着过程，审阅 diff，跑测试，满意了就提交、推送、开 PR；不满意就追问或丢弃。**你当前的工作目录始终不被碰。**
+<p align="center">给程序员自己用的 AI 任务台：一个任务一个 worktree，过程看得见，结果你说了算。</p>
+
+<p align="center">
+  <img alt="Node 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" />
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
+  <img alt="仅本机" src="https://img.shields.io/badge/监听-127.0.0.1-555" />
+  <img alt="Prettier" src="https://img.shields.io/badge/code_style-prettier-F7B93E?logo=prettier&logoColor=black" />
+</p>
+
+<table>
+  <tr>
+    <td><img src="docs/images/settings-light.png" alt="浅色界面" /></td>
+    <td><img src="docs/images/settings-dark.png" alt="暗色界面" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>浅色</sub></td>
+    <td align="center"><sub>暗色（跟随系统自动切换）</sub></td>
+  </tr>
+</table>
+
+描述一个缺陷或需求，DevLane 为它单独建一个 git worktree 和分支，让本机的 Claude Code 在里面干活。你看着过程，审阅 diff，跑测试，满意了就提交、推送、开 PR；不满意就追问或丢弃。**你当前的工作目录始终不被碰。**
+
+## 特性
 
 - 运行在你自己的电脑上，只监听 `127.0.0.1`
 - 调用你本机已经登录的 `claude` 命令，不需要另外配模型密钥
@@ -9,6 +32,7 @@
 - 设置里可按 bug/feature 编辑 Agent 初始提示模板（本地持久化；与 Jira 字段独立，不回写）
 - 默认不自动合并 PR；设置开启且条件满足时可由面板自动或手动合并（gh pr merge --merge）
 - 项目路径手动输入，支持任意本地 git 仓库
+- 界面浅色 / 暗色跟随系统，尊重「减少动态效果」设置
 
 使用方法见 [docs/02-使用手册.md](docs/02-使用手册.md)，产品设计见 [docs/01-产品设计.md](docs/01-产品设计.md)。
 
@@ -43,8 +67,9 @@ DevLane 没有登录，能在运行它的机器上执行命令，所以**服务�
 ## 开发
 
 ```bash
-npm run typecheck   # 服务端 + 前端类型检查
-npm test            # 206 项测试（含真实 git 操作）
+npm run typecheck      # 服务端 + 前端类型检查
+npm test               # 350 项测试（含真实 git 操作）
+npm run format         # Prettier 格式化；CI/提交前可用 npm run format:check
 npm run build
 ```
 
