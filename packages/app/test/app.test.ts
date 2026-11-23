@@ -105,12 +105,22 @@ async function setup(
   return { agent, manager };
 }
 
-const get = (url: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url, headers: { host: HOST, ...headers } });
-const send = (method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, payload?: unknown, headers: Record<string, string> = {}) =>
-  app.inject({ method, url, payload: payload as object, headers: { host: HOST, 'x-devlane': '1', ...headers } });
+const get = (url: string, headers: Record<string, string> = {}) =>
+  app.inject({ method: 'GET', url, headers: { host: HOST, ...headers } });
+const send = (
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  url: string,
+  payload?: unknown,
+  headers: Record<string, string> = {},
+) => app.inject({ method, url, payload: payload as object, headers: { host: HOST, 'x-devlane': '1', ...headers } });
 
 async function addProject(extra: object = {}) {
-  const res = await send('POST', '/api/projects', { path: repo, testCommand: 'node check.js', linkNodeModules: false, ...extra });
+  const res = await send('POST', '/api/projects', {
+    path: repo,
+    testCommand: 'node check.js',
+    linkNodeModules: false,
+    ...extra,
+  });
   expect(res.statusCode, res.body).toBe(201);
   return res.json();
 }
@@ -147,7 +157,12 @@ describe('访问来源防护', () => {
   });
 
   it('写操作没有自定义请求头被拒绝', async () => {
-    const res = await app.inject({ method: 'POST', url: '/api/projects/inspect', payload: { path: repo }, headers: { host: HOST } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/projects/inspect',
+      payload: { path: repo },
+      headers: { host: HOST },
+    });
     expect(res.statusCode).toBe(403);
   });
 
@@ -227,7 +242,11 @@ describe('项目', () => {
 
   it('修改项目配置', async () => {
     await addProject();
-    const res = await send('PATCH', '/api/projects/P1', { name: '演示', testCommand: 'npm test', extraAllowed: ['npm run lint', ' ', 'npm run lint'] });
+    const res = await send('PATCH', '/api/projects/P1', {
+      name: '演示',
+      testCommand: 'npm test',
+      extraAllowed: ['npm run lint', ' ', 'npm run lint'],
+    });
     expect(res.json()).toMatchObject({ name: '演示', testCommand: 'npm test', extraAllowed: ['npm run lint'] });
     expect((await send('PATCH', '/api/projects/P9', { name: 'x' })).statusCode).toBe(404);
     expect((await send('PATCH', '/api/projects/P1', { name: '' })).statusCode).toBe(400);
@@ -254,7 +273,12 @@ describe('任务流程（通过 HTTP）', () => {
   it('创建、查看过程与变更、提交、丢弃', async () => {
     await setup();
     await addProject();
-    const created = await send('POST', '/api/tasks', { projectId: 'P1', kind: 'bug', title: '求和错误', description: 'add(2,3)=-1' });
+    const created = await send('POST', '/api/tasks', {
+      projectId: 'P1',
+      kind: 'bug',
+      title: '求和错误',
+      description: 'add(2,3)=-1',
+    });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
     await waitStatus(id, 'review');
@@ -265,7 +289,9 @@ describe('任务流程（通过 HTTP）', () => {
     expect(later).toHaveLength(timeline.length - 2);
 
     const changes = (await get(`/api/tasks/${id}/changes`)).json();
-    expect(changes.files).toEqual([expect.objectContaining({ path: 'sum.js', status: 'M', additions: 1, deletions: 1 })]);
+    expect(changes.files).toEqual([
+      expect.objectContaining({ path: 'sum.js', status: 'M', additions: 1, deletions: 1 }),
+    ]);
 
     const commit = await send('POST', `/api/tasks/${id}/commit`, { message: 'fix: 求和' });
     expect(commit.json()).toMatchObject({ status: 'committed' });
@@ -281,7 +307,8 @@ describe('任务流程（通过 HTTP）', () => {
   it('被拦截的命令：允许后继续', async () => {
     const { agent } = await setup(new FakeAgent([denied('npm install lodash'), fixSum]));
     await addProject();
-    const id = (await send('POST', '/api/tasks', { projectId: 'P1', kind: 'feature', title: '加依赖' })).json().id as string;
+    const id = (await send('POST', '/api/tasks', { projectId: 'P1', kind: 'feature', title: '加依赖' })).json()
+      .id as string;
     const task = await waitStatus(id, 'needs_you');
     expect(task.denials[0]).toMatchObject({ command: 'npm install lodash', allowable: true });
 
@@ -335,16 +362,29 @@ describe('设置', () => {
 
   it('默认值', async () => {
     const s = (await get('/api/state')).json().settings;
-    expect(s).toMatchObject({ maxBudgetUsd: 3, maxConcurrent: 2, editorCommand: 'code', jira: null });
+    expect(s).toMatchObject({ maxBudgetUsd: 0, maxConcurrent: 2, editorCommand: 'code', jira: null });
   });
 
   it('修改通用设置', async () => {
-    const res = await send('PUT', '/api/settings', { maxBudgetUsd: 5, maxConcurrent: 3, model: 'sonnet', editorCommand: 'cursor', claudePath: '' });
+    const res = await send('PUT', '/api/settings', {
+      maxBudgetUsd: 5,
+      maxConcurrent: 3,
+      model: 'sonnet',
+      editorCommand: 'cursor',
+      claudePath: '',
+    });
     expect(res.json()).toMatchObject({ maxBudgetUsd: 5, maxConcurrent: 3, model: 'sonnet', editorCommand: 'cursor' });
   });
 
+  it('预算填 0 表示无上限', async () => {
+    const res = await send('PUT', '/api/settings', { maxBudgetUsd: 0 });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().maxBudgetUsd).toBe(0);
+  });
+
   it.each([
-    [{ maxBudgetUsd: 0 }, '预算'],
+    [{ maxBudgetUsd: 0.05 }, '预算'],
+    [{ maxBudgetUsd: -1 }, '预算'],
     [{ maxBudgetUsd: 1000 }, '预算'],
     [{ maxConcurrent: 0 }, '任务数'],
     [{ maxConcurrent: 99 }, '任务数'],
@@ -364,7 +404,11 @@ describe('Jira', () => {
   });
 
   const configure = () =>
-    send('PUT', '/api/settings/jira', { baseUrl: 'https://house730.atlassian.net/some/path', email: 'me@example.com', apiToken: 'secret-token-123' });
+    send('PUT', '/api/settings/jira', {
+      baseUrl: 'https://house730.atlassian.net/some/path',
+      email: 'me@example.com',
+      apiToken: 'secret-token-123',
+    });
 
   it('没配置时提示去设置', async () => {
     const res = await get('/api/jira/issues');
@@ -375,7 +419,13 @@ describe('Jira', () => {
   it('保存配置：地址规范化，Token 永远不会返回给界面', async () => {
     const res = await configure();
     expect(res.statusCode).toBe(200);
-    expect(res.json().jira).toEqual({ baseUrl: 'https://house730.atlassian.net', email: 'me@example.com', hasToken: true, defaultJql: '', writeEnabled: false });
+    expect(res.json().jira).toEqual({
+      baseUrl: 'https://house730.atlassian.net',
+      email: 'me@example.com',
+      hasToken: true,
+      defaultJql: '',
+      writeEnabled: false,
+    });
     expect(res.body).not.toContain('secret-token-123');
     expect((await get('/api/state')).body).not.toContain('secret-token-123');
     // 内部确实保存了
@@ -429,7 +479,12 @@ describe('Jira', () => {
   });
 
   it('配置了默认 JQL 且没有任何筛选时使用它', async () => {
-    await send('PUT', '/api/settings/jira', { baseUrl: 'https://x.atlassian.net', email: 'a@b.c', apiToken: 't', defaultJql: 'project = HOUSE' });
+    await send('PUT', '/api/settings/jira', {
+      baseUrl: 'https://x.atlassian.net',
+      email: 'a@b.c',
+      apiToken: 't',
+      defaultJql: 'project = HOUSE',
+    });
     const res = await get('/api/jira/issues');
     expect(res.json().jql).toBe('project = HOUSE');
     const filtered = await get('/api/jira/issues?scope=mine');
@@ -574,7 +629,6 @@ describe('Jira 评论回写（全 mock / FakeJira，禁止真站）', () => {
   });
 });
 
-
 describe('CI / merge FakeGh (mock only)', () => {
   function fakeOk(overrides: Partial<PrSnap> = {}): PrSnap {
     return { refreshedAt: new Date().toISOString(), prNumber: 42, ci: 'success', merge: 'mergeable', ...overrides };
@@ -596,7 +650,12 @@ describe('CI / merge FakeGh (mock only)', () => {
 
   it('T1 success+mergeable', async () => {
     const calls: string[] = [];
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async (url) => { calls.push(url); return fakeOk({ refreshedAt: '2026-10-29T01:00:00.000Z' }); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async (url) => {
+        calls.push(url);
+        return fakeOk({ refreshedAt: '2026-10-29T01:00:00.000Z' });
+      },
+    });
     const id = await makeTask();
     simulatePr(id);
     const res = await send('POST', `/api/tasks/${id}/pr-check`);
@@ -606,7 +665,9 @@ describe('CI / merge FakeGh (mock only)', () => {
   });
 
   it('T2 failure not success', async () => {
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => fakeOk({ ci: 'failure', merge: 'blocked', mergeDetail: 'x' }) });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => fakeOk({ ci: 'failure', merge: 'blocked', mergeDetail: 'x' }),
+    });
     const id = await makeTask();
     simulatePr(id);
     expect((await send('POST', `/api/tasks/${id}/pr-check`)).json().prCheck.ci).toBe('failure');
@@ -614,7 +675,12 @@ describe('CI / merge FakeGh (mock only)', () => {
 
   it('T3 merged; no merge write path', async () => {
     const seen: string[] = [];
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async (url) => { seen.push(url); return fakeOk({ ci: 'none', merge: 'merged' }); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async (url) => {
+        seen.push(url);
+        return fakeOk({ ci: 'none', merge: 'merged' });
+      },
+    });
     const id = await makeTask();
     simulatePr(id);
     expect((await send('POST', `/api/tasks/${id}/pr-check`)).json().prCheck.merge).toBe('merged');
@@ -623,7 +689,12 @@ describe('CI / merge FakeGh (mock only)', () => {
 
   it('T4 no prUrl -> 400; zero calls', async () => {
     let calls = 0;
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { calls++; return fakeOk(); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => {
+        calls++;
+        return fakeOk();
+      },
+    });
     const id = await makeTask();
     const res = await send('POST', `/api/tasks/${id}/pr-check`);
     expect(res.statusCode).toBe(400);
@@ -632,7 +703,11 @@ describe('CI / merge FakeGh (mock only)', () => {
   });
 
   it('T5 fail keeps status/prUrl', async () => {
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { throw new HttpError(502, 'refresh PR status failed: authentication required'); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => {
+        throw new HttpError(502, 'refresh PR status failed: authentication required');
+      },
+    });
     const id = await makeTask();
     simulatePr(id, 'https://github.com/o/r/pull/7');
     const res = await send('POST', `/api/tasks/${id}/pr-check`);
@@ -645,7 +720,12 @@ describe('CI / merge FakeGh (mock only)', () => {
 
   it('T6 two refreshes update refreshedAt', async () => {
     let n = 0;
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { n++; return fakeOk({ refreshedAt: `2026-10-29T0${n}:00:00.000Z`, ci: n === 1 ? 'pending' : 'success' }); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => {
+        n++;
+        return fakeOk({ refreshedAt: `2026-10-29T0${n}:00:00.000Z`, ci: n === 1 ? 'pending' : 'success' });
+      },
+    });
     const id = await makeTask();
     simulatePr(id);
     const r1 = await send('POST', `/api/tasks/${id}/pr-check`);
@@ -657,7 +737,12 @@ describe('CI / merge FakeGh (mock only)', () => {
 
   it('T7 keep old ci/merge on failure', async () => {
     let fail = false;
-    await setup(new FakeAgent([fixSum]), { prSnapshotFetcher: async () => { if (fail) throw new HttpError(502, 'network'); return fakeOk({ ci: 'success', merge: 'mergeable', refreshedAt: '2026-10-29T03:00:00.000Z' }); } });
+    await setup(new FakeAgent([fixSum]), {
+      prSnapshotFetcher: async () => {
+        if (fail) throw new HttpError(502, 'network');
+        return fakeOk({ ci: 'success', merge: 'mergeable', refreshedAt: '2026-10-29T03:00:00.000Z' });
+      },
+    });
     const id = await makeTask();
     simulatePr(id);
     expect((await send('POST', `/api/tasks/${id}/pr-check`)).statusCode).toBe(200);
@@ -670,14 +755,18 @@ describe('CI / merge FakeGh (mock only)', () => {
   });
 });
 
-
 describe('auto-merge FakeGh (mock only; never real gh pr merge)', () => {
   function fakeOk(overrides: Partial<PrSnap> = {}): PrSnap {
     return { refreshedAt: new Date().toISOString(), prNumber: 42, ci: 'success', merge: 'mergeable', ...overrides };
   }
   async function makeTask() {
     await addProject();
-    const res = await send('POST', '/api/tasks', { projectId: 'P1', kind: 'bug', title: 'auto-merge', description: 'd' });
+    const res = await send('POST', '/api/tasks', {
+      projectId: 'P1',
+      kind: 'bug',
+      title: 'auto-merge',
+      description: 'd',
+    });
     expect(res.statusCode, res.body).toBe(201);
     return res.json().id as string;
   }

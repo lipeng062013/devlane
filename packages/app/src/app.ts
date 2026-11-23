@@ -1,18 +1,13 @@
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { discoverCapabilities } from './agents/capabilities';
+import { draftPullRequest } from './pr-template';
 import type { AgentAdapter } from './claude';
 import { type AgentProvider, HttpError, normalizeAgentProvider } from './domain';
 import { gitVersion, ghVersion, inspectRepo } from './git';
 import { type JiraApi, JiraClient, type JiraScope, buildJql } from './jira';
-import {
-  addProject,
-  publicSettings,
-  removeProject,
-  updateJira,
-  updateProject,
-  updateSettings,
-} from './projects';
+import { addProject, publicSettings, removeProject, updateJira, updateProject, updateSettings } from './projects';
 import { buildGuard } from './security';
 import type { StateStore } from './store';
 import type { Change, TaskManager } from './tasks';
@@ -41,10 +36,12 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 export function buildApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1024 * 1024 });
   const { store, manager } = opts;
-  const getAgent = opts.getAgent ?? ((_: AgentProvider) => {
-    if (!opts.agent) throw new Error('buildApp 需要 getAgent 或 agent');
-    return opts.agent;
-  });
+  const getAgent =
+    opts.getAgent ??
+    ((_: AgentProvider) => {
+      if (!opts.agent) throw new Error('buildApp 需要 getAgent 或 agent');
+      return opts.agent;
+    });
   const makeJira = opts.jiraFactory ?? ((cfg) => new JiraClient(cfg));
 
   app.addHook('onRequest', buildGuard(opts.port, opts.extraOrigins));
@@ -71,9 +68,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (!force && envCache && Date.now() - envCache.at < 60_000) return envCache.value;
     const settings = store.data.settings;
     const [claude, codex, grokBuild, git, gh] = await Promise.all([
-      getAgent('claude').version(settings.claudePath).catch(() => null),
-      getAgent('codex').version(settings.codexPath).catch(() => null),
-      getAgent('grok-build').version(settings.grokBuildPath).catch(() => null),
+      getAgent('claude')
+        .version(settings.claudePath)
+        .catch(() => null),
+      getAgent('codex')
+        .version(settings.codexPath)
+        .catch(() => null),
+      getAgent('grok-build')
+        .version(settings.grokBuildPath)
+        .catch(() => null),
       gitVersion(),
       ghVersion(),
     ]);
@@ -83,6 +86,22 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.get('/api/health', async () => ({ ok: true }));
   app.get('/api/env', async (req) => environment((req.query as { refresh?: string }).refresh === '1'));
+
+  app.get<{ Querystring: { provider?: string } }>('/api/models', async (req) => {
+    const provider = normalizeAgentProvider(req.query.provider);
+    const settings = store.data.settings;
+    const binaryPath =
+      provider === 'claude' ? settings.claudePath : provider === 'codex' ? settings.codexPath : settings.grokBuildPath;
+    const agent = getAgent(provider);
+    const models = agent.listModels ? await agent.listModels(binaryPath) : [];
+    return { provider, models };
+  });
+
+  app.get<{ Querystring: { projectId?: string } }>('/api/capabilities', async (req) => {
+    const project = store.data.projects.find((p) => p.id === req.query.projectId) ?? store.data.projects[0];
+    if (!project) return { projectId: '', items: [] };
+    return { projectId: project.id, items: discoverCapabilities({ projectPath: project.path }) };
+  });
 
   app.get('/api/state', async () => ({
     projects: store.data.projects,
@@ -143,6 +162,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       agentProvider: normalizeAgentProvider(b.agentProvider),
       tags: Array.isArray(b.tags) ? (b.tags as string[]) : undefined,
       priority: str(b.priority) as 'high' | 'medium' | 'low' | 'none' | undefined,
+      model: str(b.model),
+      effort: str(b.effort) as 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined,
+      usePoteto: b.usePoteto === true,
     });
     return reply.code(201).send(task);
   });
@@ -155,7 +177,6 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     return manager.updateTaskMeta(req.params.id, patch);
   });
 
-
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>('/api/tasks/:id/timeline', async (req) => {
     manager.getTask(req.params.id);
     return { items: manager.timeline.read(req.params.id, Number(req.query.after ?? 0) || 0) };
@@ -163,9 +184,14 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.get<{ Params: { id: string } }>('/api/tasks/:id/changes', async (req) => manager.getChanges(req.params.id));
 
-  app.post<{ Params: { id: string } }>('/api/tasks/:id/message', async (req) =>
-    manager.sendMessage(req.params.id, String(obj(req.body).text ?? '')),
-  );
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/message', async (req) => {
+    const b = obj(req.body);
+    return manager.sendMessage(req.params.id, {
+      text: String(b.text ?? ''),
+      model: str(b.model),
+      effort: str(b.effort) as 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | '',
+    });
+  });
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/allow', async (req) => {
     const b = obj(req.body);
@@ -178,14 +204,33 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.post<{ Params: { id: string } }>('/api/tasks/:id/test', async (req) => manager.runTests(req.params.id));
   app.post<{ Params: { id: string } }>('/api/tasks/:id/test/stop', async (req) => manager.stopTests(req.params.id));
   app.post<{ Params: { id: string } }>('/api/tasks/:id/discard', async (req) => manager.discard(req.params.id));
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/archive', async (req) => manager.archive(req.params.id));
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/unarchive', async (req) => manager.unarchive(req.params.id));
+  app.delete<{ Params: { id: string } }>('/api/tasks/:id', async (req) => manager.deleteTask(req.params.id));
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/commit', async (req) =>
     manager.commit(req.params.id, String(obj(req.body).message ?? '')),
   );
 
+  app.get<{ Params: { id: string } }>('/api/tasks/:id/pr-draft', async (req) => {
+    const task = store.data.tasks.find((item) => item.id === req.params.id);
+    if (!task) return { title: '', body: '', fromTemplate: false };
+    return draftPullRequest(task.worktreePath, {
+      kind: task.kind,
+      title: task.title,
+      description: task.description,
+      jiraKey: task.jiraKey,
+      test: task.test,
+    });
+  });
+
   app.post<{ Params: { id: string } }>('/api/tasks/:id/pr', async (req) => {
     const b = obj(req.body);
-    return manager.openPullRequest(req.params.id, { title: String(b.title ?? ''), body: String(b.body ?? '') });
+    return manager.openPullRequest(req.params.id, {
+      title: String(b.title ?? ''),
+      body: String(b.body ?? ''),
+      base: str(b.base),
+    });
   });
   app.post<{ Params: { id: string } }>('/api/tasks/:id/jira-comment', async (req) => {
     const force = Boolean(obj(req.body).force);
@@ -196,8 +241,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/pr-merge', async (req) => manager.mergeTaskPr(req.params.id));
 
-
-app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/open-editor', async (req) => {
     manager.openEditor(req.params.id);
     return { ok: true };
   });

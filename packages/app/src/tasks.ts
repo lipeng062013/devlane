@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type AgentAdapter,
@@ -9,6 +9,7 @@ import {
   type AgentMessage,
   type AgentProcess,
   killTree,
+  isValidModel,
   quoteShellArg,
   summarizeTool,
 } from './claude';
@@ -16,7 +17,9 @@ import {
   type AgentProvider,
   type Denial,
   HttpError,
+  type ReasoningEffort,
   normalizeAgentProvider,
+  normalizeEffort,
   type NewTimelineItem,
   type Project,
   type PrCheckSnapshot,
@@ -37,15 +40,18 @@ import {
   parsePrNumber,
   hasUncommitted,
   inspectRepo,
+  installHusky,
   linkNodeModules,
   pushBranch,
   removeWorktree,
   worktreesRootFor,
 } from './git';
 import { type JiraApi, JiraClient } from './jira';
+import { validBranch } from './projects';
 import { canMergePr, mergeBlockReason, mergePullRequest } from './pr-merge';
 import { type ApproveMode, buildClaudeSettings, ruleFromCommand } from './permissions';
-import { CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
+import { workspaceIsManaged } from './agents/capabilities';
+import { applyPoteto, CONTINUE_PROMPT, buildAllowedPrompt, buildInitialPrompt } from './prompt';
 import type { StateStore } from './store';
 import { normalizePriority, normalizeTags } from './task-meta';
 import { TimelineLog } from './timeline';
@@ -74,7 +80,6 @@ export interface TaskManagerDeps {
   };
 }
 
-
 export interface CreateTaskInput {
   projectId: string;
   kind: TaskKind;
@@ -85,6 +90,15 @@ export interface CreateTaskInput {
   agentProvider?: AgentProvider;
   tags?: string[];
   priority?: TaskPriority;
+  model?: string;
+  effort?: ReasoningEffort;
+  usePoteto?: boolean;
+}
+
+export interface SendMessageInput {
+  text: string;
+  model?: string;
+  effort?: ReasoningEffort | '';
 }
 
 export type Change = { type: 'task' | 'timeline' | 'projects' | 'settings'; id: string };
@@ -115,6 +129,13 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n…（已截断）` : text;
 }
 
+function cleanModel(model: string | undefined): string | undefined {
+  const value = model?.trim() ?? '';
+  if (!value) return undefined;
+  if (!isValidModel(value)) throw new HttpError(400, '模型名包含不允许的字符');
+  return value;
+}
+
 export class TaskManager extends EventEmitter {
   readonly timeline: TimelineLog;
   private readonly store: StateStore;
@@ -131,10 +152,12 @@ export class TaskManager extends EventEmitter {
   constructor(deps: TaskManagerDeps) {
     super();
     this.store = deps.store;
-    this.getAgent = deps.getAgent ?? ((_: AgentProvider) => {
-      if (!deps.agent) throw new Error('TaskManager 需要 getAgent 或 agent');
-      return deps.agent;
-    });
+    this.getAgent =
+      deps.getAgent ??
+      ((_: AgentProvider) => {
+        if (!deps.agent) throw new Error('TaskManager 需要 getAgent 或 agent');
+        return deps.agent;
+      });
     this.makeJira = deps.jiraFactory ?? ((cfg) => new JiraClient(cfg));
     this.prSnapshotFetcher = deps.prSnapshotFetcher;
     this.openPrDeps = deps.openPrDeps;
@@ -199,7 +222,12 @@ export class TaskManager extends EventEmitter {
         this.note(task, task.lastError, 'error');
       }
       if (task.test?.status === 'running') {
-        task.test = { ...task.test, status: 'failed', output: `${task.test.output}\n（服务重启，测试被中断）`, durationMs: null };
+        task.test = {
+          ...task.test,
+          status: 'failed',
+          output: `${task.test.output}\n（服务重启，测试被中断）`,
+          durationMs: null,
+        };
       }
     }
     this.store.save();
@@ -226,7 +254,8 @@ export class TaskManager extends EventEmitter {
     if (description.length > MAX_TEXT) throw new HttpError(400, `描述不能超过 ${MAX_TEXT} 字`);
     if (input.kind !== 'bug' && input.kind !== 'feature') throw new HttpError(400, '任务类型必须是 bug 或 feature');
     const jiraKey = input.jiraKey?.trim() || undefined;
-    if (jiraKey && !/^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(jiraKey)) throw new HttpError(400, `Jira 编号格式不对：${jiraKey}`);
+    if (jiraKey && !/^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(jiraKey))
+      throw new HttpError(400, `Jira 编号格式不对：${jiraKey}`);
     const base = (input.baseBranch ?? project.baseBranch).trim();
     if (!/^[\w./@-]+$/.test(base)) throw new HttpError(400, `基线分支名不合法：${base}`);
 
@@ -251,7 +280,9 @@ export class TaskManager extends EventEmitter {
       try {
         baseSha = await addWorktree(info.root, fallbackPath, branch, base);
         worktreePath = fallbackPath;
-        notes.push(`无法在项目旁边创建工作区（${(err as Error).message}），已改放到 ${this.worktreesRoot}。如果项目用了跨盘符的 node_modules 链接，Nuxt 等工具可能报路径错误，建议关闭项目的「链接 node_modules」`);
+        notes.push(
+          `无法在项目旁边创建工作区（${(err as Error).message}），已改放到 ${this.worktreesRoot}。如果项目用了跨盘符的 node_modules 链接，Nuxt 等工具可能报路径错误，建议关闭项目的「链接 node_modules」`,
+        );
       } catch (err2) {
         throw new HttpError(400, `创建工作区失败：${(err2 as Error).message}`);
       }
@@ -260,6 +291,8 @@ export class TaskManager extends EventEmitter {
       const note = await linkNodeModules(info.root, worktreePath);
       if (note) notes.push(note);
     }
+    const huskyNote = await installHusky(info.root, worktreePath);
+    if (huskyNote) notes.push(huskyNote);
 
     const now = this.nowIso();
     const agentProvider = normalizeAgentProvider(input.agentProvider);
@@ -286,6 +319,9 @@ export class TaskManager extends EventEmitter {
       notes,
       tags: normalizeTags(input.tags),
       priority: normalizePriority(input.priority),
+      model: cleanModel(input.model),
+      effort: normalizeEffort(input.effort),
+      usePoteto: input.usePoteto === true,
       createdAt: now,
       updatedAt: now,
     };
@@ -297,7 +333,6 @@ export class TaskManager extends EventEmitter {
     this.pump();
     return task;
   }
-
 
   async updateTaskMeta(taskId: string, patch: { tags?: string[]; priority?: TaskPriority }): Promise<Task> {
     const task = this.getTask(taskId);
@@ -337,7 +372,8 @@ export class TaskManager extends EventEmitter {
     }
     const settings = this.store.data.settings;
     const provider = normalizeAgentProvider(task.agentProvider);
-    const prompt = task.pendingPrompt ?? CONTINUE_PROMPT;
+    const rawPrompt = task.pendingPrompt ?? CONTINUE_PROMPT;
+    const prompt = task.runCount === 0 ? rawPrompt : applyPoteto(rawPrompt, task.usePoteto);
     task.pendingPrompt = undefined;
     task.runCount += 1;
     task.status = 'running';
@@ -350,9 +386,6 @@ export class TaskManager extends EventEmitter {
       writeFileSync(settingsPath, JSON.stringify(buildClaudeSettings(project, task.approvedRules), null, 2), 'utf8');
     } else {
       writeFileSync(settingsPath, '{}', 'utf8');
-      if (task.runCount === 1) {
-        this.note(task, '本 Agent 第一刀无 Claude 级权限拦截');
-      }
     }
 
     this.log(task, { type: 'prompt', run: task.runCount, text: clip(prompt, MAX_TEXT) });
@@ -374,9 +407,16 @@ export class TaskManager extends EventEmitter {
           sessionId: task.sessionId,
           resume: task.sessionStarted,
           settingsPath,
-          model: settings.model || undefined,
+          model: task.model || settings.model || undefined,
+          effort: task.effort,
           maxBudgetUsd: settings.maxBudgetUsd,
           binaryPath,
+          trustWorkspace:
+            provider === 'grok-build' &&
+            workspaceIsManaged(task.worktreePath, [
+              this.worktreesRoot,
+              ...(project ? [worktreesRootFor(project.path, this.dataDir)] : []),
+            ]),
         },
         (m) => this.onMessage(task, run, m),
       );
@@ -436,13 +476,18 @@ export class TaskManager extends EventEmitter {
       }
       case 'result':
         run.result = m;
-        task.costUsd += m.costUsd;
+        if (m.costKnown) task.costUsd += m.costUsd;
         task.turns += m.turns;
+        if (m.sessionId) {
+          task.sessionId = m.sessionId;
+          task.sessionStarted = true;
+        }
         this.log(task, {
           type: 'result',
           ok: m.ok,
           text: clip(m.text, MAX_TEXT),
           costUsd: m.costUsd,
+          costKnown: m.costKnown,
           turns: m.turns,
           durationMs: m.durationMs,
         });
@@ -452,7 +497,8 @@ export class TaskManager extends EventEmitter {
 
   private explainFailure(result: NonNullable<RunState['result']>): string {
     const budget = this.store.data.settings.maxBudgetUsd;
-    if (result.subtype === 'error_max_budget_usd') return `这一轮花费超过了单次预算上限 $${budget}，已自动停止。可以在「设置」里调高预算，然后点「继续」`;
+    if (result.subtype === 'error_max_budget_usd')
+      return `这一轮花费超过了单次预算上限 $${budget}，已自动停止。可以在「设置」里调高预算，然后点「继续」`;
     if (result.subtype === 'error_max_turns') return '这一轮对话轮数达到上限，已自动停止。点「继续」可以接着做';
     return result.text.trim() || `Agent 没有正常完成（${result.subtype || '未知原因'}）`;
   }
@@ -473,7 +519,7 @@ export class TaskManager extends EventEmitter {
     } else {
       task.status = 'failed';
       const tail = exit.stderr.trim().split('\n').slice(-5).join('\n');
-      task.lastError = tail || `Claude 异常退出（退出码 ${exit.code ?? '无'}）`;
+      task.lastError = tail || `Agent 异常退出（退出码 ${exit.code ?? '无'}）`;
       this.note(task, task.lastError, 'error');
     }
     this.touch(task);
@@ -482,15 +528,21 @@ export class TaskManager extends EventEmitter {
 
   // ---------- 与 Claude 交互 ----------
 
-  async sendMessage(taskId: string, text: string): Promise<Task> {
+  async sendMessage(taskId: string, input: string | SendMessageInput): Promise<Task> {
     const task = this.getTask(taskId);
-    if (!REVIEWABLE.has(task.status)) throw new HttpError(409, `当前状态（${task.status}）不能追问`);
-    const msg = (text ?? '').trim();
+    if (task.status === 'archived') throw new HttpError(409, '任务已归档，先取消归档再追问');
+    const live = task.status === 'running' || task.status === 'queued';
+    if (!live && !REVIEWABLE.has(task.status)) throw new HttpError(409, `当前状态（${task.status}）不能追问`);
+    const body: SendMessageInput = typeof input === 'string' ? { text: input } : input;
+    const msg = (body.text ?? '').trim();
     if (!msg) throw new HttpError(400, '内容不能为空');
     if (msg.length > MAX_TEXT) throw new HttpError(400, `内容不能超过 ${MAX_TEXT} 字`);
+    if (body.model !== undefined) task.model = cleanModel(body.model);
+    if (body.effort !== undefined) task.effort = body.effort === '' ? undefined : normalizeEffort(body.effort);
     for (const d of task.denials) if (d.status === 'pending') d.status = 'ignored';
-    task.pendingPrompt = msg;
-    task.status = 'queued';
+    task.pendingPrompt = task.pendingPrompt && live ? `${task.pendingPrompt}\n\n${msg}` : msg;
+    if (!live) task.status = 'queued';
+    this.log(task, { type: 'prompt', run: task.runCount + (live ? 1 : 0), text: clip(msg, MAX_TEXT) });
     this.touch(task);
     this.pump();
     return task;
@@ -499,7 +551,8 @@ export class TaskManager extends EventEmitter {
   /** 允许被拦截的命令并让 Claude 继续。 */
   async allowDenials(taskId: string, denialIds: string[], mode: ApproveMode): Promise<Task> {
     const task = this.getTask(taskId);
-    if (task.status !== 'needs_you' && task.status !== 'review') throw new HttpError(409, `当前状态（${task.status}）没有待处理的拦截`);
+    if (task.status !== 'needs_you' && task.status !== 'review')
+      throw new HttpError(409, `当前状态（${task.status}）没有待处理的拦截`);
     if (mode !== 'exact' && mode !== 'prefix') throw new HttpError(400, 'mode 必须是 exact 或 prefix');
     const picked = task.denials.filter((d) => denialIds.includes(d.id) && d.status === 'pending');
     if (picked.length === 0) throw new HttpError(400, '没有选中可处理的拦截');
@@ -507,7 +560,11 @@ export class TaskManager extends EventEmitter {
     const commands: string[] = [];
     for (const d of picked) {
       const rule = d.command ? ruleFromCommand(d.command, mode) : null;
-      if (!rule) throw new HttpError(400, `这条无法放行：${d.command ?? d.detail}（危险命令、复合命令或非命令类操作不支持放行）`);
+      if (!rule)
+        throw new HttpError(
+          400,
+          `这条无法放行：${d.command ?? d.detail}（危险命令、复合命令或非命令类操作不支持放行）`,
+        );
       if (!task.approvedRules.includes(rule)) task.approvedRules.push(rule);
       d.status = 'allowed';
       d.rule = rule;
@@ -557,8 +614,10 @@ export class TaskManager extends EventEmitter {
   }
 
   private ensureIdle(task: Task, what: string): void {
-    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, `Claude 还在工作，请先停止或等它完成再${what}`);
+    if (task.status === 'running' || task.status === 'queued')
+      throw new HttpError(409, `Agent 还在工作，请先停止或等它完成再${what}`);
     if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    if (task.status === 'archived') throw new HttpError(409, '任务已归档');
   }
 
   async commit(taskId: string, message: string): Promise<Task> {
@@ -580,16 +639,23 @@ export class TaskManager extends EventEmitter {
     });
   }
 
-  async openPullRequest(taskId: string, input: { title: string; body: string }): Promise<Task> {
+  async openPullRequest(taskId: string, input: { title: string; body: string; base?: string }): Promise<Task> {
     const task = this.getTask(taskId);
     this.ensureIdle(task, '创建 PR');
     const title = (input.title ?? '').trim();
     if (!title) throw new HttpError(400, 'PR 标题不能为空');
     if (!task.commitSha) throw new HttpError(409, '还没有提交，请先提交改动');
     return this.exclusive(taskId, async () => {
-      if (await hasUncommitted(task.worktreePath)) throw new HttpError(409, '还有未提交的改动，请先提交，避免 PR 缺内容');
+      if (await hasUncommitted(task.worktreePath))
+        throw new HttpError(409, '还有未提交的改动，请先提交，避免 PR 缺内容');
       const project = this.getProject(task.projectId);
-      const remotes = (await git(project.path, ['remote'])).split('\n').map((s) => s.trim()).filter(Boolean);
+      const base = (input.base ?? '').trim() || task.baseBranch;
+      if (!validBranch(base)) throw new HttpError(400, `目标分支名不合法：${base}`);
+      if (base === task.branch) throw new HttpError(400, '目标分支不能是任务自己的分支');
+      const remotes = (await git(project.path, ['remote']))
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (!remotes.includes('origin')) throw new HttpError(400, '仓库没有名为 origin 的远程，无法推送');
       const checkGh = this.openPrDeps?.ghVersion ?? ghVersion;
       if (!(await checkGh())) throw new HttpError(400, '找不到 gh 命令。请安装 GitHub CLI 并执行 gh auth login');
@@ -600,12 +666,12 @@ export class TaskManager extends EventEmitter {
       } catch (err) {
         throw new HttpError(502, `推送失败：${(err as Error).message}`);
       }
-      this.note(task, `已推送分支 ${task.branch}`);
+      this.note(task, `已推送分支 ${task.branch}，PR 目标 ${base}`);
       let url: string;
       try {
         const doCreate = this.openPrDeps?.createPullRequest ?? createPullRequest;
         url = await doCreate(task.worktreePath, {
-          base: task.baseBranch,
+          base,
           head: task.branch,
           title,
           body: (input.body ?? '').slice(0, 20_000),
@@ -626,8 +692,6 @@ export class TaskManager extends EventEmitter {
       return task;
     });
   }
-
-
 
   private async fetchPrSnap(task: Task): Promise<PrCheckSnapshot> {
     if (!task.prUrl) throw new HttpError(400, '还没有 PR');
@@ -755,7 +819,6 @@ export class TaskManager extends EventEmitter {
     });
   }
 
-
   /** Auto Jira comment: only pr_opened + writeEnabled + jiraKey; same fingerprint skips. Errors note only. */
   async maybeAutoJiraComment(task: Task): Promise<void> {
     if (!task.jiraKey) return;
@@ -848,6 +911,54 @@ export class TaskManager extends EventEmitter {
       this.touch(task);
       this.pump();
       return task;
+    });
+  }
+
+  /** 藏到已结束，不删工作区。运行中的任务要先停止。 */
+  async archive(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (task.status === 'archived') return task;
+    if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
+    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, '请先停止任务再归档');
+    return this.exclusive(taskId, async () => {
+      task.statusBeforeArchive = task.status;
+      task.status = 'archived';
+      task.pendingPrompt = undefined;
+      this.note(task, '已归档：工作区仍保留，可在「已结束」里取消归档');
+      this.touch(task);
+      return task;
+    });
+  }
+
+  async unarchive(taskId: string): Promise<Task> {
+    const task = this.getTask(taskId);
+    if (task.status !== 'archived') throw new HttpError(409, '任务不在归档中');
+    const previous = task.statusBeforeArchive;
+    task.status =
+      previous && previous !== 'archived' && previous !== 'running' && previous !== 'queued' ? previous : 'review';
+    task.statusBeforeArchive = undefined;
+    this.note(task, '已取消归档');
+    this.touch(task);
+    return task;
+  }
+
+  /**
+   * 从列表和磁盘记录里去掉这个任务。
+   * 工作区还在时先走 discard 的清理。第二次调用是 404。
+   */
+  async deleteTask(taskId: string): Promise<{ ok: true }> {
+    const task = this.getTask(taskId);
+    if (task.status === 'running' || task.status === 'queued') throw new HttpError(409, '请先停止任务再删除');
+    if (task.status !== 'discarded') await this.discard(taskId);
+    return this.exclusive(taskId, async () => {
+      const idx = this.store.data.tasks.findIndex((t) => t.id === taskId);
+      if (idx >= 0) this.store.data.tasks.splice(idx, 1);
+      this.store.save();
+      rmSync(join(this.dataDir, 'tasks', taskId), { recursive: true, force: true });
+      this.timeline.forget(taskId);
+      this.notify('task', taskId);
+      this.pump();
+      return { ok: true as const };
     });
   }
 
@@ -953,7 +1064,12 @@ export class TaskManager extends EventEmitter {
     if (task.status === 'discarded') throw new HttpError(409, '任务已丢弃');
     const editor = this.store.data.settings.editorCommand;
     if (!/^[\w.-]+$/.test(editor)) throw new HttpError(400, '编辑器命令只能是一个程序名，例如 code');
-    const child = spawn(editor, [quoteShellArg(task.worktreePath)], { shell: true, detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn(editor, [quoteShellArg(task.worktreePath)], {
+      shell: true,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     child.on('error', () => undefined);
     child.unref();
   }

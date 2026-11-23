@@ -1,5 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { readClaudeModels } from './agents/local-models';
 import { delimiter, join } from 'node:path';
 
 // ---------- 对外的适配器接口 ----------
@@ -13,9 +14,13 @@ export interface AgentStart {
   /** 权限文件路径（--settings）。Claude 用；其他 Agent 可忽略。 */
   settingsPath: string;
   model?: string;
+  /** 思考强度。Grok 传给 --effort。其他 Agent 可忽略。 */
+  effort?: string;
   maxBudgetUsd?: number;
   /** 可执行文件路径（优先）。 */
   binaryPath?: string;
+  /** 工作区由 DevLane 创建。Grok 据此加载项目 skill 和 MCP。 */
+  trustWorkspace?: boolean;
   /** @deprecated 请用 binaryPath；保留兼容旧调用。 */
   claudePath?: string;
 }
@@ -44,6 +49,8 @@ export type AgentMessage =
       subtype: string;
       text: string;
       costUsd: number;
+      /** false 表示 CLI 没报告花费。不要把缺省当成 $0。 */
+      costKnown: boolean;
       turns: number;
       durationMs: number;
       sessionId: string;
@@ -52,6 +59,7 @@ export type AgentMessage =
 export interface AgentAdapter {
   start(opts: AgentStart, onMessage: (m: AgentMessage) => void): AgentProcess;
   version(binaryPath?: string): Promise<string | null>;
+  listModels?(binaryPath?: string): Promise<Array<{ id: string; isDefault: boolean; label?: string }>>;
 }
 
 // ---------- 输出解析 ----------
@@ -80,14 +88,16 @@ export function parseClaudeLine(line: string): AgentMessage[] {
   const out: AgentMessage[] = [];
   switch (o.type) {
     case 'system':
-      if (o.subtype === 'init') out.push({ kind: 'init', sessionId: String(o.session_id ?? ''), model: String(o.model ?? '') });
+      if (o.subtype === 'init')
+        out.push({ kind: 'init', sessionId: String(o.session_id ?? ''), model: String(o.model ?? '') });
       else if (o.subtype === 'permission_denied') {
         out.push({ kind: 'denied', toolUseId: String(o.tool_use_id ?? ''), toolName: String(o.tool_name ?? '') });
       }
       break;
     case 'assistant':
       for (const block of o.message?.content ?? []) {
-        if (block.type === 'text' && String(block.text ?? '').trim()) out.push({ kind: 'text', text: String(block.text) });
+        if (block.type === 'text' && String(block.text ?? '').trim())
+          out.push({ kind: 'text', text: String(block.text) });
         else if (block.type === 'tool_use') {
           out.push({ kind: 'tool_use', id: String(block.id), name: String(block.name), input: block.input ?? {} });
         }
@@ -112,6 +122,8 @@ export function parseClaudeLine(line: string): AgentMessage[] {
         subtype: String(o.subtype ?? ''),
         text: String(o.result ?? ''),
         costUsd: Number(o.total_cost_usd ?? 0),
+        costKnown:
+          o.total_cost_usd !== undefined && o.total_cost_usd !== null && Number.isFinite(Number(o.total_cost_usd)),
         turns: Number(o.num_turns ?? 0),
         durationMs: Number(o.duration_ms ?? 0),
         sessionId: String(o.session_id ?? ''),
@@ -124,7 +136,11 @@ export function parseClaudeLine(line: string): AgentMessage[] {
 }
 
 /** 给时间线看的一行工具摘要。 */
-export function summarizeTool(name: string, input: Record<string, unknown>, cwd?: string): { summary: string; detail?: string } {
+export function summarizeTool(
+  name: string,
+  input: Record<string, unknown>,
+  cwd?: string,
+): { summary: string; detail?: string } {
   const rel = (p: unknown): string => {
     const s = String(p ?? '');
     if (cwd && s.toLowerCase().startsWith(cwd.toLowerCase())) return s.slice(cwd.length).replace(/^[\\/]+/, '') || '.';
@@ -133,7 +149,10 @@ export function summarizeTool(name: string, input: Record<string, unknown>, cwd?
   switch (name) {
     case 'Bash': {
       const cmd = String(input.command ?? '');
-      return { summary: cmd.split('\n')[0]!.slice(0, 160), detail: cmd.length > 160 || cmd.includes('\n') ? cmd.slice(0, 2000) : undefined };
+      return {
+        summary: cmd.split('\n')[0]!.slice(0, 160),
+        detail: cmd.length > 160 || cmd.includes('\n') ? cmd.slice(0, 2000) : undefined,
+      };
     }
     case 'Read':
     case 'Edit':
@@ -152,14 +171,16 @@ export function summarizeTool(name: string, input: Record<string, unknown>, cwd?
 
 // ---------- 启动参数 ----------
 
-const MODEL_PATTERN = /^[\w.\-[\]/:]+$/;
+const MODEL_PATTERN = /^[\w.\-[\]/:@:]+$/;
 
 export function isValidModel(model: string): boolean {
   return MODEL_PATTERN.test(model);
 }
 
 /** 构造 claude 命令行参数。用户输入的内容（提示词）走标准输入，不在这里。 */
-export function buildClaudeArgs(opts: Pick<AgentStart, 'sessionId' | 'resume' | 'settingsPath' | 'model' | 'maxBudgetUsd'>): string[] {
+export function buildClaudeArgs(
+  opts: Pick<AgentStart, 'sessionId' | 'resume' | 'settingsPath' | 'model' | 'maxBudgetUsd'>,
+): string[] {
   const args = [
     '-p',
     '--output-format',
@@ -249,7 +270,11 @@ export class ClaudeAgent implements AgentAdapter {
     const bin = resolveClaude(opts.binaryPath ?? opts.claudePath);
     if (!bin) {
       return {
-        done: Promise.resolve({ code: null, stderr: '找不到 claude 命令。请先安装 Claude Code，或在「设置」里填写它的路径。', killed: false }),
+        done: Promise.resolve({
+          code: null,
+          stderr: '找不到 claude 命令。请先安装 Claude Code，或在「设置」里填写它的路径。',
+          killed: false,
+        }),
         kill: () => undefined,
       };
     }
@@ -300,6 +325,10 @@ export class ClaudeAgent implements AgentAdapter {
         killTree(child);
       },
     };
+  }
+
+  listModels(): Promise<Array<{ id: string; isDefault: boolean; label?: string }>> {
+    return Promise.resolve(readClaudeModels());
   }
 
   version(binaryPath?: string): Promise<string | null> {

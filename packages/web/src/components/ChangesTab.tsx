@@ -12,7 +12,13 @@ function DiffLines({ text }: { text: string }) {
       {lines.map((line, i) => {
         let cls = '';
         if (line.startsWith('@@')) cls = 'hunk';
-        else if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) cls = 'meta';
+        else if (
+          line.startsWith('+++') ||
+          line.startsWith('---') ||
+          line.startsWith('diff ') ||
+          line.startsWith('index ')
+        )
+          cls = 'meta';
         else if (line.startsWith('+')) cls = 'add';
         else if (line.startsWith('-')) cls = 'del';
         return (
@@ -68,11 +74,18 @@ export default function ChangesTab({ task, version }: { task: Task; version: num
           {data.files.length} 个文件 <span className="add">+{totalAdd}</span> <span className="del">-{totalDel}</span>
         </div>
         {data.files.map((f) => (
-          <button key={f.path} className={`file-row ${f.path === selected ? 'sel' : ''}`} onClick={() => setSelected(f.path)} title={f.path}>
+          <button
+            key={f.path}
+            className={`file-row ${f.path === selected ? 'sel' : ''}`}
+            onClick={() => setSelected(f.path)}
+            title={f.path}
+          >
             <span className={`file-status st-${f.status}`}>{STATUS_MARK[f.status]}</span>
             <span className="file-path">{f.path}</span>
             <span className="file-stat">
-              {f.binary ? '二进制' : (
+              {f.binary ? (
+                '二进制'
+              ) : (
                 <>
                   <span className="add">+{f.additions}</span> <span className="del">-{f.deletions}</span>
                 </>
@@ -83,7 +96,13 @@ export default function ChangesTab({ task, version }: { task: Task; version: num
       </div>
       <div className="changes-diff">
         {data.truncated && <div className="notice-inline">改动太大，只显示了前一部分</div>}
-        {file?.binary ? <div className="empty">二进制文件，不显示内容</div> : current ? <DiffLines text={current} /> : <div className="empty">没有可显示的内容</div>}
+        {file?.binary ? (
+          <div className="empty">二进制文件，不显示内容</div>
+        ) : current ? (
+          <DiffLines text={current} />
+        ) : (
+          <div className="empty">没有可显示的内容</div>
+        )}
       </div>
     </div>
   );

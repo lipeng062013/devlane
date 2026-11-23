@@ -26,7 +26,14 @@ if (!exe) throw new Error('找不到 Chrome/Edge');
 const port = 9340 + Math.floor(Math.random() * 50);
 const proc = spawn(
   exe,
-  ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), 'dl-shot-'))}`, `--window-size=${width},${height}`, '--no-first-run', 'about:blank'],
+  [
+    '--headless=new',
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${mkdtempSync(join(tmpdir(), 'dl-shot-'))}`,
+    `--window-size=${width},${height}`,
+    '--no-first-run',
+    'about:blank',
+  ],
   { stdio: 'ignore' },
 );
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,7 +60,10 @@ try {
       pending.get(msg.id)(msg);
       pending.delete(msg.id);
     }
-    if (msg.method === 'Runtime.exceptionThrown') problems.push('异常: ' + (msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text));
+    if (msg.method === 'Runtime.exceptionThrown')
+      problems.push(
+        '异常: ' + (msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text),
+      );
     if (msg.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(msg.params.type)) {
       problems.push(`console.${msg.params.type}: ` + msg.params.args.map((a) => a.value ?? a.description).join(' '));
     }
@@ -64,7 +74,8 @@ try {
       pending.set(mid, resolve);
       ws.send(JSON.stringify({ id: mid, method, params }));
     });
-  const evalJs = async (expression) => (await send('Runtime.evaluate', { expression, returnByValue: true })).result.result.value;
+  const evalJs = async (expression) =>
+    (await send('Runtime.evaluate', { expression, returnByValue: true })).result.result.value;
 
   await send('Runtime.enable');
   await send('Page.enable');

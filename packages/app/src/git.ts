@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, lstatSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -106,7 +106,10 @@ export async function inspectRepo(rawPath: string): Promise<RepoInfo> {
   const candidates = [originHead, 'main', 'master', 'develop', currentBranch ?? ''];
   const suggestedBase = candidates.find((c) => c && locals.includes(c)) ?? currentBranch ?? 'HEAD';
 
-  const remotes = (await git(root, ['remote'])).split('\n').map((s) => s.trim()).filter(Boolean);
+  const remotes = (await git(root, ['remote']))
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const porcelain = (await git(root, ['status', '--porcelain'])).split('\n').filter(Boolean);
 
   return {
@@ -139,7 +142,8 @@ export async function addWorktree(repo: string, worktreePath: string, branch: st
 export async function linkNodeModules(repo: string, worktreePath: string): Promise<string | null> {
   const source = join(repo, 'node_modules');
   const target = join(worktreePath, 'node_modules');
-  if (!existsSync(source)) return '主仓库没有 node_modules，未链接依赖；需要的话请在任务里让 Claude 安装，或先在主仓库安装依赖';
+  if (!existsSync(source))
+    return '主仓库没有 node_modules，未链接依赖；需要的话请在任务里让 Claude 安装，或先在主仓库安装依赖';
   if (existsSync(target)) return null;
   try {
     symlinkSync(source, target, 'junction');
@@ -154,6 +158,21 @@ export async function linkNodeModules(repo: string, worktreePath: string): Promi
     return 'node_modules 没有被 .gitignore 忽略，为避免它进入提交，已取消链接';
   }
   return null;
+}
+
+/**
+ * 工作区只检出进 Git 的文件。.husky/_ 由 husky install 生成，不在仓库里。
+ * 项目自己有 Husky 时补装一次，否则提交前钩子会找不到 _/husky.sh。
+ */
+export async function installHusky(repo: string, worktreePath: string): Promise<string | null> {
+  const config = join(worktreePath, '.husky', 'pre-commit');
+  const installed = join(worktreePath, '.husky', '_', 'husky.sh');
+  if (!existsSync(config) || existsSync(installed)) return null;
+  const source = join(repo, '.husky', '_');
+  if (!existsSync(join(source, 'husky.sh')))
+    return '工作区有 Husky 钩子，主仓库没有 .husky/_。请先在主仓库执行 npm install';
+  cpSync(source, join(worktreePath, '.husky', '_'), { recursive: true });
+  return existsSync(installed) ? null : '复制 .husky/_ 后仍然没有 husky.sh';
 }
 
 /** 只移除链接本身，不碰链接指向的真实目录。 */
@@ -199,7 +218,12 @@ export function worktreesRootFor(projectPath: string, dataDir: string): string {
  * 先摘除 node_modules 链接：git worktree remove 和递归删除有可能顺着链接删掉主仓库的依赖。
  * allowedRoots 是允许删除的目录范围，防止误删 DevLane 工作区之外的东西。
  */
-export async function removeWorktree(repo: string, worktreePath: string, branch: string, allowedRoots: string | string[]): Promise<void> {
+export async function removeWorktree(
+  repo: string,
+  worktreePath: string,
+  branch: string,
+  allowedRoots: string | string[],
+): Promise<void> {
   const roots = Array.isArray(allowedRoots) ? allowedRoots : [allowedRoots];
   if (!roots.some((root) => isInside(root, worktreePath))) {
     throw new GitError(`拒绝删除不在 DevLane 工作区内的目录：${worktreePath}`, '');
@@ -263,7 +287,8 @@ export async function changes(worktreePath: string, baseSha: string): Promise<Ch
   }
   files.sort((a, b) => a.path.localeCompare(b.path));
 
-  let patch = files.length === 0 ? '' : await git(worktreePath, ['diff', '--no-renames', '--no-color', '--unified=3', baseSha]);
+  let patch =
+    files.length === 0 ? '' : await git(worktreePath, ['diff', '--no-renames', '--no-color', '--unified=3', baseSha]);
   let truncated = false;
   if (Buffer.byteLength(patch) > MAX_PATCH_BYTES) {
     patch = patch.slice(0, MAX_PATCH_BYTES);
@@ -307,7 +332,18 @@ export async function createPullRequest(
   try {
     const { stdout } = await execFileAsync(
       'gh',
-      ['pr', 'create', '--base', opts.base.replace(/^origin\//, ''), '--head', opts.head, '--title', opts.title, '--body', opts.body],
+      [
+        'pr',
+        'create',
+        '--base',
+        opts.base.replace(/^origin\//, ''),
+        '--head',
+        opts.head,
+        '--title',
+        opts.title,
+        '--body',
+        opts.body,
+      ],
       { cwd: worktreePath, windowsHide: true, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 },
     );
     const url = stdout.trim().split('\n').pop() ?? '';
@@ -327,10 +363,4 @@ export function safeJoin(root: string, ...parts: string[]): string {
   return full;
 }
 
-export {
-  parsePrNumber,
-  fetchPrSnapshot,
-  summarizeCi,
-  summarizeMerge,
-  type GhExecFile,
-} from './pr-check';
+export { parsePrNumber, fetchPrSnapshot, summarizeCi, summarizeMerge, type GhExecFile } from './pr-check';

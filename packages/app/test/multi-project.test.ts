@@ -54,14 +54,29 @@ describe('multi-project / 双 fixture 仓（mock only）', () => {
     await app.ready();
     try {
       const host = { host: '127.0.0.1:7791', 'x-devlane': '1' };
-      const a = await app.inject({ method: 'POST', url: '/api/projects', payload: { path: repoA, linkNodeModules: false }, headers: host });
-      const b = await app.inject({ method: 'POST', url: '/api/projects', payload: { path: repoB, linkNodeModules: false }, headers: host });
+      const a = await app.inject({
+        method: 'POST',
+        url: '/api/projects',
+        payload: { path: repoA, linkNodeModules: false },
+        headers: host,
+      });
+      const b = await app.inject({
+        method: 'POST',
+        url: '/api/projects',
+        payload: { path: repoB, linkNodeModules: false },
+        headers: host,
+      });
       expect(a.statusCode, a.body).toBe(201);
       expect(b.statusCode, b.body).toBe(201);
       expect(a.json().path).not.toBe(b.json().path);
       expect(store.data.projects).toHaveLength(2);
 
-      const dup = await app.inject({ method: 'POST', url: '/api/projects', payload: { path: repoA, linkNodeModules: false }, headers: host });
+      const dup = await app.inject({
+        method: 'POST',
+        url: '/api/projects',
+        payload: { path: repoA, linkNodeModules: false },
+        headers: host,
+      });
       expect(dup.statusCode).toBe(409);
       expect(dup.json().error).toContain('已经添加过了');
     } finally {
@@ -87,8 +102,12 @@ describe('multi-project / 双 fixture 仓（mock only）', () => {
     const rootA = worktreesRootFor(repoA, dataDir);
     const rootB = worktreesRootFor(repoB, dataDir);
     const norm = (p: string) => resolve(p).toLowerCase();
-    expect(norm(tA.worktreePath) === norm(rootA) || norm(tA.worktreePath).startsWith(norm(rootA) + sep.toLowerCase())).toBe(true);
-    expect(norm(tB.worktreePath) === norm(rootB) || norm(tB.worktreePath).startsWith(norm(rootB) + sep.toLowerCase())).toBe(true);
+    expect(
+      norm(tA.worktreePath) === norm(rootA) || norm(tA.worktreePath).startsWith(norm(rootA) + sep.toLowerCase()),
+    ).toBe(true);
+    expect(
+      norm(tB.worktreePath) === norm(rootB) || norm(tB.worktreePath).startsWith(norm(rootB) + sep.toLowerCase()),
+    ).toBe(true);
     expect(resolve(tA.worktreePath)).not.toBe(resolve(tB.worktreePath));
     expect(existsSync(join(tA.worktreePath, 'a-only.txt'))).toBe(true);
     expect(existsSync(join(tA.worktreePath, 'b-only.txt'))).toBe(false);

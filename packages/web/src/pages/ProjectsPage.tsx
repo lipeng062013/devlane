@@ -13,7 +13,13 @@ function ProjectForm({
 }: {
   initial: { name: string; baseBranch: string; testCommand: string; extraAllowed: string; linkNodeModules: boolean };
   info?: RepoInfo;
-  onSubmit: (v: { name: string; baseBranch: string; testCommand: string; extraAllowed: string[]; linkNodeModules: boolean }) => Promise<void>;
+  onSubmit: (v: {
+    name: string;
+    baseBranch: string;
+    testCommand: string;
+    extraAllowed: string[];
+    linkNodeModules: boolean;
+  }) => Promise<void>;
   onCancel: () => void;
   submitLabel: string;
 }) {
@@ -35,7 +41,10 @@ function ProjectForm({
           name,
           baseBranch,
           testCommand,
-          extraAllowed: extra.split('\n').map((s) => s.trim()).filter(Boolean),
+          extraAllowed: extra
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean),
           linkNodeModules: link,
         }).finally(() => setBusy(false));
       }}
@@ -60,12 +69,23 @@ function ProjectForm({
       </div>
       <label>
         测试命令（改完后用它验证，也允许 Claude 运行）
-        <input value={testCommand} onChange={(e) => setTestCommand(e.target.value)} placeholder="例如 npm test、pytest -q、go test ./..." className="mono" />
+        <input
+          value={testCommand}
+          onChange={(e) => setTestCommand(e.target.value)}
+          placeholder="例如 npm test、pytest -q、go test ./..."
+          className="mono"
+        />
         {looksLikeDevServer(testCommand) && <div className="notice-inline warn">{DEV_SERVER_HINT}</div>}
       </label>
       <label>
         额外允许 Claude 运行的命令（每行一条，不含 && | ; 等符号）
-        <textarea rows={3} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={'npm run lint\nnpm run build'} className="mono" />
+        <textarea
+          rows={3}
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          placeholder={'npm run lint\nnpm run build'}
+          className="mono"
+        />
       </label>
       <label className="check">
         <input type="checkbox" checked={link} onChange={(e) => setLink(e.target.checked)} />
@@ -116,7 +136,13 @@ function AddProject({ onDone }: { onDone: () => void }) {
           void check();
         }}
       >
-        <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="项目的完整路径，例如 D:\code\my-app" className="mono" autoFocus />
+        <input
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder="项目的完整路径，例如 D:\code\my-app"
+          className="mono"
+          autoFocus
+        />
         <button className="btn btn-primary" disabled={checking || !path.trim()}>
           {checking ? '检查中…' : '检查'}
         </button>
@@ -134,17 +160,31 @@ function AddProject({ onDone }: { onDone: () => void }) {
             <div>
               当前分支：<b>{info.currentBranch ?? '（游离 HEAD）'}</b>　推荐基线：<b>{info.suggestedBase}</b>
             </div>
-            <div>远程：{info.remotes.length ? info.remotes.join('、') : <span className="bad-text">没有（只能本地提交，不能推送和开 PR）</span>}</div>
+            <div>
+              远程：
+              {info.remotes.length ? (
+                info.remotes.join('、')
+              ) : (
+                <span className="bad-text">没有（只能本地提交，不能推送和开 PR）</span>
+              )}
+            </div>
             {!info.hasCommits && <div className="bad-text">这个仓库还没有任何提交，需要先做一次初始提交。</div>}
             {info.dirty && (
               <div className="warn-text">
-                主工作目录有 {info.dirtyCount} 处未提交的改动。没关系，DevLane 不会动它，但任务是从已提交的 {info.suggestedBase} 拉出来的，不包含这些改动。
+                主工作目录有 {info.dirtyCount} 处未提交的改动。没关系，DevLane 不会动它，但任务是从已提交的{' '}
+                {info.suggestedBase} 拉出来的，不包含这些改动。
               </div>
             )}
           </div>
           {info.hasCommits && (
             <ProjectForm
-              initial={{ name: folder, baseBranch: info.suggestedBase, testCommand: '', extraAllowed: '', linkNodeModules: true }}
+              initial={{
+                name: folder,
+                baseBranch: info.suggestedBase,
+                testCommand: '',
+                extraAllowed: '',
+                linkNodeModules: true,
+              }}
               info={info}
               submitLabel="添加项目"
               onCancel={onDone}
@@ -177,7 +217,8 @@ function ProjectCard({ project }: { project: Project }) {
         <button
           className="btn btn-sm btn-danger"
           onClick={() => {
-            if (window.confirm(`移除项目「${project.name}」？只会从 DevLane 里移除，不会删除你的代码。`)) void act(() => api.deleteProject(project.id));
+            if (window.confirm(`移除项目「${project.name}」？只会从 DevLane 里移除，不会删除你的代码。`))
+              void act(() => api.deleteProject(project.id));
           }}
         >
           移除
@@ -185,11 +226,19 @@ function ProjectCard({ project }: { project: Project }) {
       </div>
       <div className="mono small">{project.path}</div>
       <div className="muted small">
-        基线 {project.baseBranch} · 测试：{project.testCommand ? <span className="mono">{project.testCommand}</span> : '未配置'} · {project.linkNodeModules ? '链接 node_modules' : '不链接 node_modules'}
+        基线 {project.baseBranch} · 测试：
+        {project.testCommand ? <span className="mono">{project.testCommand}</span> : '未配置'} ·{' '}
+        {project.linkNodeModules ? '链接 node_modules' : '不链接 node_modules'}
       </div>
       {editing && (
         <ProjectForm
-          initial={{ name: project.name, baseBranch: project.baseBranch, testCommand: project.testCommand, extraAllowed: project.extraAllowed.join('\n'), linkNodeModules: project.linkNodeModules }}
+          initial={{
+            name: project.name,
+            baseBranch: project.baseBranch,
+            testCommand: project.testCommand,
+            extraAllowed: project.extraAllowed.join('\n'),
+            linkNodeModules: project.linkNodeModules,
+          }}
           submitLabel="保存"
           onCancel={() => setEditing(false)}
           onSubmit={async (v) => {
@@ -217,7 +266,9 @@ export default function ProjectsPage() {
           </button>
         )}
       </div>
-      <p className="muted">项目就是你电脑上的一个 git 仓库。每个任务会从它的基线分支拉出独立的工作区，改动不会碰到你当前的工作目录。</p>
+      <p className="muted">
+        项目就是你电脑上的一个 git 仓库。每个任务会从它的基线分支拉出独立的工作区，改动不会碰到你当前的工作目录。
+      </p>
       {adding && <AddProject onDone={() => setAdding(false)} />}
       {state.projects.map((p) => (
         <ProjectCard key={p.id} project={p} />

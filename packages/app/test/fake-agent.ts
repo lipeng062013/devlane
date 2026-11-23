@@ -9,7 +9,11 @@ export interface Ctl {
   sleep(ms: number): Promise<void>;
 }
 
-export type Script = (opts: AgentStart, emit: (m: AgentMessage) => void, ctl: Ctl) => Promise<Partial<AgentExit> | void> | Partial<AgentExit> | void;
+export type Script = (
+  opts: AgentStart,
+  emit: (m: AgentMessage) => void,
+  ctl: Ctl,
+) => Promise<Partial<AgentExit> | void> | Partial<AgentExit> | void;
 
 /** 按调用顺序执行脚本的假 agent；脚本用完后重复最后一个。 */
 export class FakeAgent implements AgentAdapter {
@@ -70,6 +74,7 @@ export const result = (over: Partial<Extract<AgentMessage, { kind: 'result' }>> 
   subtype: 'success',
   text: '完成',
   costUsd: 0.25,
+  costKnown: true,
   turns: 3,
   durationMs: 1200,
   sessionId: 's',

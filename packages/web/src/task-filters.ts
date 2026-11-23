@@ -10,8 +10,9 @@ export type TaskListFilters = {
 
 export function statusSegMatches(task: Task, filter: TaskListFilters['statusSeg']): boolean {
   if (filter === 'all') return true;
-  if (filter === 'done') return task.status === 'discarded' || task.status === 'pr_opened';
-  return task.status !== 'discarded' && task.status !== 'pr_opened';
+  if (filter === 'done')
+    return task.status === 'discarded' || task.status === 'archived' || task.status === 'pr_opened';
+  return task.status !== 'discarded' && task.status !== 'archived' && task.status !== 'pr_opened';
 }
 
 export function taskTags(task: Task): string[] {

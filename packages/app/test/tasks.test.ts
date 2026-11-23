@@ -11,9 +11,11 @@ import { cleanupTemp, makeRepo, sh, tempDir } from './helpers';
 
 afterEach(cleanupTemp);
 
-const CHECK_JS = "const fs = require('fs');\nconst s = fs.readFileSync('sum.js', 'utf8');\nconsole.log('checking');\nprocess.exit(s.includes('a + b') ? 0 : 1);\n";
+const CHECK_JS =
+  "const fs = require('fs');\nconst s = fs.readFileSync('sum.js', 'utf8');\nconsole.log('checking');\nprocess.exit(s.includes('a + b') ? 0 : 1);\n";
 // 模拟一个跑很久的测试：先输出一行，记下自己的进程号，然后一直挂着
-const SLOW_JS = "const fs = require('fs');\nfs.writeFileSync('slow.pid', String(process.pid));\nconsole.log('started');\nsetInterval(() => {}, 1000);\n";
+const SLOW_JS =
+  "const fs = require('fs');\nfs.writeFileSync('slow.pid', String(process.pid));\nconsole.log('started');\nsetInterval(() => {}, 1000);\n";
 
 function alive(pid: number): boolean {
   try {
@@ -83,7 +85,7 @@ describe('创建任务', () => {
     expect(call.prompt).toContain('node check.js');
     expect(call.prompt).toContain('不要执行 git commit、git push');
     expect(call.prompt).toContain('缺陷修复');
-    expect(call.maxBudgetUsd).toBe(3);
+    expect(call.maxBudgetUsd).toBe(0);
     // 主仓库完全没动
     expect(await hasUncommitted(repo)).toBe(false);
     expect((await git(repo, ['branch', '--show-current'])).trim()).toBe('main');
@@ -143,7 +145,9 @@ describe('运行与审阅', () => {
     expect(task.sessionStarted).toBe(true);
 
     const items = manager.timeline.read(task.id);
-    expect(items.map((i) => i.type)).toEqual(expect.arrayContaining(['note', 'prompt', 'text', 'tool', 'tool_result', 'result']));
+    expect(items.map((i) => i.type)).toEqual(
+      expect.arrayContaining(['note', 'prompt', 'text', 'tool', 'tool_result', 'result']),
+    );
     const seqs = items.map((i) => i.seq);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
     expect(new Set(seqs).size).toBe(seqs.length);
@@ -200,7 +204,12 @@ describe('权限拦截', () => {
     await waitFor(() => task.status === 'needs_you', '待你决定');
 
     expect(task.denials).toHaveLength(1);
-    expect(task.denials[0]).toMatchObject({ tool: 'Bash', command: 'npm install lodash', status: 'pending', allowable: true });
+    expect(task.denials[0]).toMatchObject({
+      tool: 'Bash',
+      command: 'npm install lodash',
+      status: 'pending',
+      allowable: true,
+    });
 
     await manager.allowDenials(task.id, ['d1'], 'exact');
     await waitFor(() => task.status === 'review', '待审阅');
@@ -279,10 +288,15 @@ describe('追问、停止与重启', () => {
     expect(task.costUsd).toBeCloseTo(0.5);
   });
 
-  it('追问内容不能为空，运行中不能追问', async () => {
+  it('运行中的追问进入同一会话队列，空内容仍拒绝', async () => {
     const { manager } = setup([hang]);
     const task = await manager.createTask(bug);
-    await expectHttp(manager.sendMessage(task.id, 'x'), 409);
+    await waitFor(() => task.status === 'running');
+    await manager.sendMessage(task.id, '先看测试');
+    expect(task.status).toBe('running');
+    expect(task.pendingPrompt).toBe('先看测试');
+    await manager.sendMessage(task.id, '再补日志');
+    expect(task.pendingPrompt).toBe('先看测试\n\n再补日志');
     await manager.stop(task.id);
     await waitFor(() => task.status === 'stopped');
     await expectHttp(manager.sendMessage(task.id, '   '), 400);
@@ -447,6 +461,37 @@ describe('丢弃', () => {
     await expect(manager.discard(task.id)).resolves.toBe(task);
   });
 
+  it('归档保留工作区，删除再清掉记录', async () => {
+    const { manager, store } = setup([justFinish]);
+    const task = await manager.createTask({
+      ...bug,
+      agentProvider: 'grok-build',
+      model: 'grok-4.6',
+      effort: 'high',
+      usePoteto: true,
+    });
+    await waitFor(() => task.status === 'review');
+    expect(task.usePoteto).toBe(true);
+    expect(task.model).toBe('grok-4.6');
+    const worktree = task.worktreePath;
+    await manager.archive(task.id);
+    expect(task.status).toBe('archived');
+    expect(existsSync(worktree)).toBe(true);
+    await expectHttp(manager.sendMessage(task.id, 'x'), 409, '归档');
+    await manager.unarchive(task.id);
+    expect(task.status).toBe('review');
+    task.status = 'failed';
+    await manager.archive(task.id);
+    await manager.unarchive(task.id);
+    expect(task.status).toBe('failed');
+    await manager.archive(task.id);
+    const id = task.id;
+    await manager.deleteTask(id);
+    expect(store.data.tasks.find((t) => t.id === id)).toBeUndefined();
+    expect(existsSync(worktree)).toBe(false);
+    expect(() => manager.getTask(id)).toThrow(HttpError);
+  });
+
   it('工作区被用户手动删掉后仍能丢弃', async () => {
     const { manager } = setup([justFinish]);
     const task = await manager.createTask(bug);
@@ -554,7 +599,10 @@ describe('测试命令', () => {
 describe('其他', () => {
   it('任务状态在 state 里完整，且 getTask 对未知 id 返回 404', async () => {
     const { manager } = setup([justFinish]);
-    await expectHttp(Promise.resolve().then(() => manager.getTask('T99')), 404);
+    await expectHttp(
+      Promise.resolve().then(() => manager.getTask('T99')),
+      404,
+    );
   });
 
   it('项目被删除后排队的任务会失败而不是崩溃', async () => {

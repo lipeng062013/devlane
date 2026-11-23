@@ -22,8 +22,19 @@ async function main(): Promise<void> {
   const store = new StateStore(join(dataDir, 'state.json'));
   const registry = createAgentRegistry();
   const manager = new TaskManager({ store, getAgent: (p) => registry.getAgent(p), dataDir });
-  const extraOrigins = (process.env.DEVLANE_ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const app = buildApp({ store, manager, getAgent: (p) => registry.getAgent(p), port, webDir, extraOrigins, logger: false });
+  const extraOrigins = (process.env.DEVLANE_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const app = buildApp({
+    store,
+    manager,
+    getAgent: (p) => registry.getAgent(p),
+    port,
+    webDir,
+    extraOrigins,
+    logger: false,
+  });
 
   try {
     // 只监听本机，这是安全模型的一部分，不提供修改入口

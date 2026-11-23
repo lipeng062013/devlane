@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import CapabilityPanel from '../components/CapabilityPanel';
 import { useApp } from '../ctx';
 
 function JiraSettings() {
@@ -25,7 +26,10 @@ function JiraSettings() {
     try {
       if (!(await save())) return;
       const r = await api.testJira();
-      setTestResult({ ok: true, text: `连接成功，当前用户：${r.user.name}${r.user.email ? `（${r.user.email}）` : ''}` });
+      setTestResult({
+        ok: true,
+        text: `连接成功，当前用户：${r.user.name}${r.user.email ? `（${r.user.email}）` : ''}`,
+      });
     } catch (e) {
       setTestResult({ ok: false, text: (e as Error).message });
     } finally {
@@ -37,17 +41,26 @@ function JiraSettings() {
     <section className="card">
       <h3>Jira</h3>
       <p className="muted small">
-        查询 issue；开启下方开关后，可把任务进展以<strong>评论</strong>回写到 Jira（默认关闭，不做状态流转）。
-        Token 只保存在本机 <span className="mono">~/.devlane/state.json</span>，不会显示在界面上，也不会写进日志。
+        查询 issue；开启下方开关后，可把任务进展以<strong>评论</strong>回写到 Jira（默认关闭，不做状态流转）。 Token
+        只保存在本机 <span className="mono">~/.devlane/state.json</span>，不会显示在界面上，也不会写进日志。
         验收与自检一律用 mock / FakeJira，禁止连真实 Jira 写数据。
       </p>
       <label>
         站点地址
-        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://house730.atlassian.net" />
+        <input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://house730.atlassian.net"
+        />
       </label>
       <label>
         登录邮箱
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="off" />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@company.com"
+          autoComplete="off"
+        />
       </label>
       <label>
         API Token
@@ -60,11 +73,20 @@ function JiraSettings() {
         />
       </label>
       <p className="muted small">
-        在 Atlassian 账号里创建：<a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer noopener">id.atlassian.com → 安全 → 创建 API 令牌</a>。
+        在 Atlassian 账号里创建：
+        <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer noopener">
+          id.atlassian.com → 安全 → 创建 API 令牌
+        </a>
+        。
       </p>
       <label>
         默认 JQL（可选；不填则默认显示「指派给我且未完成」）
-        <input value={defaultJql} onChange={(e) => setDefaultJql(e.target.value)} placeholder="project = HOUSE AND assignee = currentUser() ORDER BY updated DESC" className="mono" />
+        <input
+          value={defaultJql}
+          onChange={(e) => setDefaultJql(e.target.value)}
+          placeholder="project = HOUSE AND assignee = currentUser() ORDER BY updated DESC"
+          className="mono"
+        />
       </label>
 
       <label className="checkbox-row">
@@ -77,17 +99,26 @@ function JiraSettings() {
           <button
             className="btn btn-danger"
             onClick={() => {
-              if (window.confirm('清除已保存的 Jira 连接信息？')) void act(() => api.clearJira()).then(() => setToken(''));
+              if (window.confirm('清除已保存的 Jira 连接信息？'))
+                void act(() => api.clearJira()).then(() => setToken(''));
             }}
           >
             清除
           </button>
         )}
         <span className="spacer" />
-        <button className="btn" disabled={busy || !baseUrl || !email} onClick={() => void save().then((ok) => ok && notify('Jira 设置已保存'))}>
+        <button
+          className="btn"
+          disabled={busy || !baseUrl || !email}
+          onClick={() => void save().then((ok) => ok && notify('Jira 设置已保存'))}
+        >
           保存
         </button>
-        <button className="btn btn-primary" disabled={busy || !baseUrl || !email || (!token && !current?.hasToken)} onClick={() => void test()}>
+        <button
+          className="btn btn-primary"
+          disabled={busy || !baseUrl || !email || (!token && !current?.hasToken)}
+          onClick={() => void test()}
+        >
           {busy ? '测试中…' : '保存并测试连接'}
         </button>
       </div>
@@ -111,15 +142,30 @@ function GeneralSettings() {
       <h3>Agent 与任务</h3>
       <label>
         Claude 命令路径（留空自动查找）
-        <input value={claudePath} onChange={(e) => setClaudePath(e.target.value)} placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\claude.cmd" className="mono" />
+        <input
+          value={claudePath}
+          onChange={(e) => setClaudePath(e.target.value)}
+          placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\claude.cmd"
+          className="mono"
+        />
       </label>
       <label>
         Codex 命令路径（留空自动查找）
-        <input value={codexPath} onChange={(e) => setCodexPath(e.target.value)} placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\codex.cmd" className="mono" />
+        <input
+          value={codexPath}
+          onChange={(e) => setCodexPath(e.target.value)}
+          placeholder="例如 C:\Users\you\AppData\Local\Volta\bin\codex.cmd"
+          className="mono"
+        />
       </label>
       <label>
         Grok Build 命令路径（留空自动查找；本机实名 grok）
-        <input value={grokBuildPath} onChange={(e) => setGrokBuildPath(e.target.value)} placeholder="例如 C:\Users\you\.grok\bin\grok.exe" className="mono" />
+        <input
+          value={grokBuildPath}
+          onChange={(e) => setGrokBuildPath(e.target.value)}
+          placeholder="例如 C:\Users\you\.grok\bin\grok.exe"
+          className="mono"
+        />
       </label>
       <div className="form-row">
         <label>
@@ -127,8 +173,15 @@ function GeneralSettings() {
           <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="例如 sonnet、opus" />
         </label>
         <label>
-          单次运行预算上限（美元）
-          <input type="number" min={0.1} max={100} step={0.5} value={budget} onChange={(e) => setBudget(e.target.value)} />
+          单次运行预算上限（美元，0 = 无上限）
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+          />
         </label>
       </div>
       <div className="form-row">
@@ -141,7 +194,9 @@ function GeneralSettings() {
           <input value={editor} onChange={(e) => setEditor(e.target.value)} placeholder="code" />
         </label>
       </div>
-      <p className="muted small">预算是 Claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。</p>
+      <p className="muted small">
+        预算是 Claude 每次运行的花费上限，超过会自动停止，你可以调高后点「继续」。填 0 表示不设上限。
+      </p>
       <div className="form-actions">
         <span className="spacer" />
         <button
@@ -166,7 +221,6 @@ function GeneralSettings() {
     </section>
   );
 }
-
 
 function PromptTemplateSettings() {
   const { state, act, notify } = useApp();
@@ -232,7 +286,6 @@ function PromptTemplateSettings() {
   );
 }
 
-
 function AutoMergeSettings() {
   const { state, act, notify } = useApp();
   const [autoMergePr, setAutoMergePr] = useState(Boolean(state.settings.autoMergePr));
@@ -245,11 +298,7 @@ function AutoMergeSettings() {
         <span className="mono">gh pr merge --merge</span>。手动「合并 PR」按钮不受此开关限制，但走同一条件门。
       </p>
       <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={autoMergePr}
-          onChange={(e) => setAutoMergePr(e.target.checked)}
-        />
+        <input type="checkbox" checked={autoMergePr} onChange={(e) => setAutoMergePr(e.target.checked)} />
         条件满足时自动合并 PR（默认关闭）
       </label>
       <div className="form-actions">
@@ -272,6 +321,7 @@ export default function SettingsPage() {
   return (
     <div className="page-pad">
       <h1>设置</h1>
+      <CapabilityPanel />
       <section className="card">
         <div className="card-head">
           <h3>环境检查</h3>
@@ -282,19 +332,23 @@ export default function SettingsPage() {
         </div>
         <ul className="env-list">
           <li>
-            <span className={env?.claude ? 'ok-dot' : 'bad-dot'} /> claude：{env ? (env.claude ?? '未找到。请安装 Claude Code，或在下面填写路径') : '检测中…'}
+            <span className={env?.claude ? 'ok-dot' : 'bad-dot'} /> claude：
+            {env ? (env.claude ?? '未找到。请安装 Claude Code，或在下面填写路径') : '检测中…'}
           </li>
           <li>
-            <span className={env?.codex ? 'ok-dot' : 'bad-dot'} /> codex：{env ? (env.codex ?? '未找到。请安装 Codex CLI，或在下面填写路径') : '检测中…'}
+            <span className={env?.codex ? 'ok-dot' : 'bad-dot'} /> codex：
+            {env ? (env.codex ?? '未找到。请安装 Codex CLI，或在下面填写路径') : '检测中…'}
           </li>
           <li>
-            <span className={env?.grokBuild ? 'ok-dot' : 'bad-dot'} /> grok-build（本机实名 grok）：{env ? (env.grokBuild ?? '未找到。请安装 Grok Build，或在下面填写路径') : '检测中…'}
+            <span className={env?.grokBuild ? 'ok-dot' : 'bad-dot'} /> grok-build（本机实名 grok）：
+            {env ? (env.grokBuild ?? '未找到。请安装 Grok Build，或在下面填写路径') : '检测中…'}
           </li>
           <li>
             <span className={env?.git ? 'ok-dot' : 'bad-dot'} /> git：{env ? (env.git ?? '未找到') : '检测中…'}
           </li>
           <li>
-            <span className={env?.gh ? 'ok-dot' : 'warn-dot'} /> gh（创建 PR 用）：{env ? (env.gh ?? '未找到；只影响「推送并创建 PR」') : '检测中…'}
+            <span className={env?.gh ? 'ok-dot' : 'warn-dot'} /> gh（创建 PR 用）：
+            {env ? (env.gh ?? '未找到；只影响「推送并创建 PR」') : '检测中…'}
           </li>
         </ul>
       </section>

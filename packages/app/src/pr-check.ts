@@ -1,11 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import {
-  HttpError,
-  type PrCheckCi,
-  type PrCheckMerge,
-  type PrCheckSnapshot,
-} from './domain';
+import { HttpError, type PrCheckCi, type PrCheckMerge, type PrCheckSnapshot } from './domain';
 
 const execFileAsync = promisify(execFile);
 
@@ -64,9 +59,16 @@ export function summarizeCi(rollup: unknown): PrCheckCi {
     }
     if (status === 'COMPLETED' || conclusion) {
       if (
-        ['FAILURE', 'FAILED', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'CANCELED', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(
-          conclusion,
-        )
+        [
+          'FAILURE',
+          'FAILED',
+          'ERROR',
+          'TIMED_OUT',
+          'CANCELLED',
+          'CANCELED',
+          'ACTION_REQUIRED',
+          'STARTUP_FAILURE',
+        ].includes(conclusion)
       ) {
         anyFailure = true;
       } else if (conclusion === 'SUCCESS' || conclusion === 'NEUTRAL' || conclusion === 'SKIPPED') {
@@ -94,11 +96,10 @@ export function summarizeCi(rollup: unknown): PrCheckCi {
   return 'unknown';
 }
 
-export function summarizeMerge(raw: {
-  state?: string;
-  mergeable?: string;
-  mergeStateStatus?: string;
-}): { merge: PrCheckMerge; mergeDetail?: string } {
+export function summarizeMerge(raw: { state?: string; mergeable?: string; mergeStateStatus?: string }): {
+  merge: PrCheckMerge;
+  mergeDetail?: string;
+} {
   const state = String(raw.state ?? '').toUpperCase();
   if (state === 'MERGED') return { merge: 'merged' };
   if (state === 'CLOSED') return { merge: 'closed' };
@@ -108,13 +109,13 @@ export function summarizeMerge(raw: {
     return { merge: 'mergeable' };
   }
   let mergeDetail: string | undefined;
-  if (mergeable === 'CONFLICTING' || mss === 'DIRTY') mergeDetail = "有冲突";
-  else if (mss === 'BLOCKED') mergeDetail = "检查未过或被阻止";
-  else if (mss === 'BEHIND') mergeDetail = "落后基线";
-  else if (mss === 'DRAFT') mergeDetail = "草稿";
-  else if (mss === 'UNSTABLE') mergeDetail = "状态不稳定";
-  else if (mergeable === 'UNKNOWN' || !mergeable) mergeDetail = "合并态未知";
-  else mergeDetail = mss || mergeable || "不可合并";
+  if (mergeable === 'CONFLICTING' || mss === 'DIRTY') mergeDetail = '有冲突';
+  else if (mss === 'BLOCKED') mergeDetail = '检查未过或被阻止';
+  else if (mss === 'BEHIND') mergeDetail = '落后基线';
+  else if (mss === 'DRAFT') mergeDetail = '草稿';
+  else if (mss === 'UNSTABLE') mergeDetail = '状态不稳定';
+  else if (mergeable === 'UNKNOWN' || !mergeable) mergeDetail = '合并态未知';
+  else mergeDetail = mss || mergeable || '不可合并';
   return { merge: 'blocked', mergeDetail };
 }
 
@@ -130,7 +131,7 @@ export async function fetchPrSnapshot(
   deps: { execFile?: GhExecFile; now?: () => Date } = {},
 ): Promise<PrCheckSnapshot> {
   const url = String(prUrl ?? '').trim();
-  if (!url) throw new HttpError(400, "还没有 PR");
+  if (!url) throw new HttpError(400, '还没有 PR');
   const numHint = parsePrNumber(url);
   const exec = deps.execFile ?? (execFileAsync as unknown as GhExecFile);
   const now = deps.now ?? (() => new Date());
@@ -149,7 +150,7 @@ export async function fetchPrSnapshot(
       .trim()
       .split('\n')[0]
       ?.slice(0, 300);
-    const prefix = "刷新 PR 状态失败：";
+    const prefix = '刷新 PR 状态失败：';
     throw new HttpError(502, detail ? prefix + detail : prefix + 'gh error');
   }
   let raw: {
@@ -163,7 +164,7 @@ export async function fetchPrSnapshot(
   try {
     raw = JSON.parse(stdout) as typeof raw;
   } catch {
-    throw new HttpError(502, "刷新 PR 状态失败：gh JSON 无法解析");
+    throw new HttpError(502, '刷新 PR 状态失败：gh JSON 无法解析');
   }
   const ci = summarizeCi(raw.statusCheckRollup);
   const { merge, mergeDetail } = summarizeMerge(raw);

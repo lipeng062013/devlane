@@ -62,7 +62,30 @@ function Collapsible({ text, lines = 6 }: { text: string; lines?: number }) {
   );
 }
 
-export default function Timeline({ items, running }: { items: TimelineItem[]; running: boolean }) {
+/** 连续的文字块合成一条。工具、提示和结果各自成行。 */
+export function groupTimeline(items: TimelineItem[]): TimelineItem[] {
+  const out: TimelineItem[] = [];
+  for (const item of items) {
+    const prev = out[out.length - 1];
+    if (item.type === 'text' && prev?.type === 'text') {
+      out[out.length - 1] = { ...prev, text: prev.text + item.text };
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+export default function Timeline({
+  items,
+  running,
+  agentName = 'Agent',
+}: {
+  items: TimelineItem[];
+  running: boolean;
+  agentName?: string;
+}) {
+  items = groupTimeline(items);
   const results = useMemo(() => {
     const map = new Map<string, Extract<TimelineItem, { type: 'tool_result' }>>();
     for (const i of items) if (i.type === 'tool_result') map.set(i.toolUseId, i);
@@ -93,7 +116,7 @@ export default function Timeline({ items, running }: { items: TimelineItem[]; ru
             return (
               <div className="tl-prompt" key={item.seq}>
                 <div className="tl-label">
-                  你 → Claude · 第 {item.run} 轮 <span className="muted">{clock(item.ts)}</span>
+                  你 → {agentName} · 第 {item.run} 次运行 <span className="muted">{clock(item.ts)}</span>
                 </div>
                 <Collapsible text={item.text} lines={5} />
               </div>
@@ -146,7 +169,9 @@ export default function Timeline({ items, running }: { items: TimelineItem[]; ru
             return (
               <div className={`tl-result ${item.ok ? 'ok' : 'bad'}`} key={item.seq}>
                 <div className="tl-label">
-                  {item.ok ? '这一轮完成' : '这一轮未完成'} · {money(item.costUsd)} · {item.turns} 轮 · {formatDuration(item.durationMs)}
+                  {item.ok ? '这一轮完成' : '这一轮未完成'} ·{' '}
+                  {item.costKnown === false ? '花费未报告' : money(item.costUsd)} · {item.turns} 轮 ·{' '}
+                  {formatDuration(item.durationMs)}
                 </div>
                 {item.text && <div className="tl-final">{item.text}</div>}
               </div>
@@ -159,7 +184,7 @@ export default function Timeline({ items, running }: { items: TimelineItem[]; ru
             );
         }
       })}
-      {running && <div className="tl-working">Claude 正在工作…</div>}
+      {running && <div className="tl-working">{agentName} 正在工作…</div>}
     </div>
   );
 }

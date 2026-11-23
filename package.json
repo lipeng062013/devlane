@@ -12,7 +12,9 @@
     "build": "node scripts/build.mjs",
     "start": "node dist/server.mjs --open",
     "pack": "node scripts/pack.mjs",
-    "dev": "node scripts/build.mjs --server-only && node dist/server.mjs"
+    "dev": "node scripts/build.mjs --server-only && node dist/server.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "22.20.5",
@@ -20,6 +22,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "esbuild": "^0.28.2",
+    "prettier": "^3.10.1",
     "typescript": "7.0.2",
     "vite": "^8.3.5",
     "vitest": "5.0.5"

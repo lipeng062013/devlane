@@ -125,9 +125,7 @@ class Converter {
 
   private table(node: AdfNode): string {
     const rows = (node.content ?? []).map((row) =>
-      (row.content ?? []).map((cell) =>
-        this.blocks(cell.content).replace(/\n+/g, ' ').replace(/\|/g, '\\|'),
-      ),
+      (row.content ?? []).map((cell) => this.blocks(cell.content).replace(/\n+/g, ' ').replace(/\|/g, '\\|')),
     );
     if (rows.length === 0) return '';
     const header = rows[0]!;

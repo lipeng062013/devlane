@@ -3,12 +3,7 @@ import { dirname, join as pathJoin } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../src/domain';
-import {
-  canMergePr,
-  isCiMergeable,
-  mergeBlockReason,
-  mergePullRequest,
-} from '../src/pr-merge';
+import { canMergePr, isCiMergeable, mergeBlockReason, mergePullRequest } from '../src/pr-merge';
 import type { GhExecFile } from '../src/pr-check';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

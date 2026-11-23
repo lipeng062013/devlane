@@ -20,25 +20,44 @@ describe('isForbiddenCommand', () => {
     expect(isForbiddenCommand(cmd)).toBe(true);
   });
 
-  it.each(['npm install', 'npm test', 'git status', 'git diff HEAD', 'git log --oneline', 'pytest -q', 'go test ./...', 'rmx'])(
-    '不误伤 %s',
-    (cmd) => {
-      expect(isForbiddenCommand(cmd)).toBe(false);
-    },
-  );
+  it.each([
+    'npm install',
+    'npm test',
+    'git status',
+    'git diff HEAD',
+    'git log --oneline',
+    'pytest -q',
+    'go test ./...',
+    'rmx',
+  ])('不误伤 %s', (cmd) => {
+    expect(isForbiddenCommand(cmd)).toBe(false);
+  });
 });
 
 describe('isSafeCommandText', () => {
-  it.each(['npm test', 'npm run lint -- --fix', 'go test ./...', 'pytest tests/unit', 'dotnet test src\\App.Tests'])('接受 %s', (c) => {
-    expect(isSafeCommandText(c)).toBe(true);
-  });
-
-  it.each(['a && b', 'a | b', 'a; b', 'echo $(x)', 'a `b`', 'a > f', 'echo "x"', "echo 'x'", 'a\nb', '', 'x'.repeat(201), 'echo %PATH%'])(
-    '拒绝 %j',
+  it.each(['npm test', 'npm run lint -- --fix', 'go test ./...', 'pytest tests/unit', 'dotnet test src\\App.Tests'])(
+    '接受 %s',
     (c) => {
-      expect(isSafeCommandText(c)).toBe(false);
+      expect(isSafeCommandText(c)).toBe(true);
     },
   );
+
+  it.each([
+    'a && b',
+    'a | b',
+    'a; b',
+    'echo $(x)',
+    'a `b`',
+    'a > f',
+    'echo "x"',
+    "echo 'x'",
+    'a\nb',
+    '',
+    'x'.repeat(201),
+    'echo %PATH%',
+  ])('拒绝 %j', (c) => {
+    expect(isSafeCommandText(c)).toBe(false);
+  });
 });
 
 describe('ruleFromCommand', () => {
@@ -78,14 +97,32 @@ describe('buildClaudeSettings', () => {
   it('默认允许读写代码、只读 git、测试命令与额外命令', () => {
     const { allow } = buildClaudeSettings(project, []).permissions;
     expect(allow).toEqual(
-      expect.arrayContaining(['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(npm test)', 'Bash(npm test:*)', 'Bash(npm run lint)']),
+      expect.arrayContaining([
+        'Read',
+        'Edit',
+        'Write',
+        'Glob',
+        'Grep',
+        'Bash(git status:*)',
+        'Bash(git diff:*)',
+        'Bash(npm test)',
+        'Bash(npm test:*)',
+        'Bash(npm run lint)',
+      ]),
     );
   });
 
   it('永久禁止提交、推送、重置、删除等', () => {
     const { deny } = buildClaudeSettings(project, []).permissions;
     expect(deny).toEqual(
-      expect.arrayContaining(['Bash(git push:*)', 'Bash(git commit:*)', 'Bash(git reset:*)', 'Bash(rm -rf:*)', 'Bash(sudo:*)', 'Bash(gh:*)']),
+      expect.arrayContaining([
+        'Bash(git push:*)',
+        'Bash(git commit:*)',
+        'Bash(git reset:*)',
+        'Bash(rm -rf:*)',
+        'Bash(sudo:*)',
+        'Bash(gh:*)',
+      ]),
     );
   });
 
@@ -101,12 +138,20 @@ describe('buildClaudeSettings', () => {
   });
 
   it('禁止命令作为测试命令或额外命令时被忽略', () => {
-    const { allow } = buildClaudeSettings({ testCommand: 'git push', extraAllowed: ['rm -rf /', 'sudo ls'] }, []).permissions;
+    const { allow } = buildClaudeSettings(
+      { testCommand: 'git push', extraAllowed: ['rm -rf /', 'sudo ls'] },
+      [],
+    ).permissions;
     expect(allow.some((r) => /git push|rm|sudo/.test(r))).toBe(false);
   });
 
   it('合并用户批准的规则，但会再次过滤被篡改的危险规则', () => {
-    const { allow } = buildClaudeSettings(project, ['Bash(npm install:*)', 'Bash(git push:*)', 'Bash(curl http://x)', 'Read(//etc/**)']).permissions;
+    const { allow } = buildClaudeSettings(project, [
+      'Bash(npm install:*)',
+      'Bash(git push:*)',
+      'Bash(curl http://x)',
+      'Read(//etc/**)',
+    ]).permissions;
     expect(allow).toContain('Bash(npm install:*)');
     expect(allow).not.toContain('Bash(git push:*)');
     expect(allow).not.toContain('Bash(curl http://x)');

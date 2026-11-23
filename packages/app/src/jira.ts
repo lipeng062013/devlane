@@ -194,7 +194,10 @@ export class JiraClient implements JiraApi {
       if (res.status === 404) throw new HttpError(404, 'Jira 里找不到这条记录或接口（404）');
       const errBody = (await res.json().catch(() => null)) as { errorMessages?: string[] } | null;
       const reason = errBody?.errorMessages?.[0];
-      throw new HttpError(res.status === 400 ? 400 : 502, `Jira 请求失败（HTTP ${res.status}${reason ? `：${reason}` : ''})`);
+      throw new HttpError(
+        res.status === 400 ? 400 : 502,
+        `Jira 请求失败（HTTP ${res.status}${reason ? `：${reason}` : ''})`,
+      );
     }
   }
 
@@ -226,7 +229,9 @@ export class JiraClient implements JiraApi {
   async get(key: string): Promise<JiraIssueDetail> {
     if (!ISSUE_KEY.test(key)) throw new HttpError(400, `Jira 编号格式不对：${key}`);
     const fields = 'summary,description,issuetype,status,priority,assignee,reporter,labels,components,updated,comment';
-    const raw = await this.getJson<RawIssue>(`/rest/api/3/issue/${encodeURIComponent(key.toUpperCase())}?fields=${fields}`);
+    const raw = await this.getJson<RawIssue>(
+      `/rest/api/3/issue/${encodeURIComponent(key.toUpperCase())}?fields=${fields}`,
+    );
     const f = raw.fields;
     return {
       ...summarize(raw, this.baseUrl),
@@ -251,5 +256,4 @@ export class JiraClient implements JiraApi {
     );
     return { id: result?.id };
   }
-
 }

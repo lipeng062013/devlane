@@ -48,4 +48,9 @@ export class TimelineLog {
     }
     return items.length > MAX_READ ? items.slice(-MAX_READ) : items;
   }
+
+  /** 任务记录被删除后丢掉序号缓存。文件由调用方删掉。 */
+  forget(taskId: string): void {
+    this.seqs.delete(taskId);
+  }
 }

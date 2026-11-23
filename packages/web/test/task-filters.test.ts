@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '../src/types';
-import {
-  collectTagOptions,
-  mapJiraPriority,
-  normalizeTagsClient,
-  taskMatchesFilters,
-} from '../src/task-filters';
+import { collectTagOptions, mapJiraPriority, normalizeTagsClient, taskMatchesFilters } from '../src/task-filters';
 
 function task(partial: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
   return {
@@ -83,6 +78,13 @@ describe('taskMatchesFilters', () => {
     const other = task({ id: 'T3', title: 'c', projectId: 'P2', status: 'review' });
     const f = { ...base, statusSeg: 'active' as const, projectId: 'P1' };
     expect([active, done, other].filter((t) => taskMatchesFilters(t, f)).map((t) => t.id)).toEqual(['T1']);
+  });
+
+  it('archived leaves 进行中 and stays in 已结束', () => {
+    const archived = task({ id: 'T1', title: 'a', status: 'archived' });
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'active' })).toBe(false);
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'done' })).toBe(true);
+    expect(taskMatchesFilters(archived, { ...base, statusSeg: 'all' })).toBe(true);
   });
 });
 

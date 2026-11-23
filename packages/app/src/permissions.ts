@@ -89,7 +89,10 @@ export interface ClaudeSettings {
 }
 
 /** 生成传给 claude --settings 的权限文件内容。仅 Claude 使用；非 Claude 勿调用。 */
-export function buildClaudeSettings(project: Pick<Project, 'testCommand' | 'extraAllowed'>, approvedRules: string[]): ClaudeSettings {
+export function buildClaudeSettings(
+  project: Pick<Project, 'testCommand' | 'extraAllowed'>,
+  approvedRules: string[],
+): ClaudeSettings {
   const allow = new Set<string>(['Read', 'Glob', 'Grep', 'Edit', 'Write', 'NotebookEdit']);
   for (const sub of READ_ONLY_GIT) allow.add(`Bash(git ${sub}:*)`);
   allow.add('Bash(ls:*)');

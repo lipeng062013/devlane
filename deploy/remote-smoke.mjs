@@ -36,8 +36,17 @@ try {
   check('添加项目', p.status === 201, p.data?.error);
   projectId = p.data?.id;
 
-  const t = await call('POST', '/api/tasks', { projectId, kind: 'feature', title: '冒烟：说一句话', description: '只回复“好”，不要修改任何文件。' });
-  check('创建任务并建 worktree', t.status === 201 && existsSync(`${t.data?.worktreePath}/a.txt`), t.data?.worktreePath ?? t.data?.error);
+  const t = await call('POST', '/api/tasks', {
+    projectId,
+    kind: 'feature',
+    title: '冒烟：说一句话',
+    description: '只回复“好”，不要修改任何文件。',
+  });
+  check(
+    '创建任务并建 worktree',
+    t.status === 201 && existsSync(`${t.data?.worktreePath}/a.txt`),
+    t.data?.worktreePath ?? t.data?.error,
+  );
   taskId = t.data?.id;
 
   let task;
@@ -46,12 +55,17 @@ try {
     task = (await call('GET', '/api/state')).data.tasks.find((x) => x.id === taskId);
     if (!['queued', 'running'].includes(task.status)) break;
   }
-  console.log(`  任务状态：${task.status}${task.lastError ? '；原因：' + task.lastError.split('\n')[0].slice(0, 160) : ''}`);
+  console.log(
+    `  任务状态：${task.status}${task.lastError ? '；原因：' + task.lastError.split('\n')[0].slice(0, 160) : ''}`,
+  );
   check('claude 子进程已启动并结束（没有卡住）', !['queued', 'running'].includes(task.status), task.status);
   check('不是因为找不到 claude 而失败', !String(task.lastError ?? '').includes('找不到 claude'));
   if (task.status === 'failed') console.log('  （失败是预期的：服务器上的 claude 还没有登录。登录方式见部署说明）');
   if (task.status === 'review') console.log('  （任务竟然成功了：说明服务器上的 claude 已经有可用的认证）');
-  check('主仓库没有被改动', git('status', '--porcelain').trim() === '' && git('branch', '--show-current').trim() === 'main');
+  check(
+    '主仓库没有被改动',
+    git('status', '--porcelain').trim() === '' && git('branch', '--show-current').trim() === 'main',
+  );
 } finally {
   if (taskId) {
     const d = await call('POST', `/api/tasks/${taskId}/discard`);
@@ -63,7 +77,9 @@ try {
   }
   rmSync(repo, { recursive: true, force: true });
 }
-const left = existsSync('/opt/devlane/home/.devlane/worktrees') ? execFileSync('ls', ['/opt/devlane/home/.devlane/worktrees'], { encoding: 'utf8' }).trim() : '';
+const left = existsSync('/opt/devlane/home/.devlane/worktrees')
+  ? execFileSync('ls', ['/opt/devlane/home/.devlane/worktrees'], { encoding: 'utf8' }).trim()
+  : '';
 check('没有遗留的工作区', left === '', left);
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过');
 process.exitCode = failed ? 1 : 0;
