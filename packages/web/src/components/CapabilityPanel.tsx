@@ -17,11 +17,14 @@ export default function CapabilityPanel() {
   useEffect(() => {
     let cancelled = false;
     setItems(null);
-    void api.capabilities(projectId).then((res) => {
-      if (!cancelled) setItems(res.items);
-    }).catch(() => {
-      if (!cancelled) setItems([]);
-    });
+    void api
+      .capabilities(projectId)
+      .then((res) => {
+        if (!cancelled) setItems(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setItems([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -33,7 +36,10 @@ export default function CapabilityPanel() {
   return (
     <section className="card capability-panel">
       <h3>Skill 与 MCP</h3>
-      <p className="muted small">这是本机已经配好的 skill 和 MCP，按项目、个人、本机分档。Agent 启动时读取自己的配置，不会把这一整份清单塞进提示词。</p>
+      <p className="muted small">
+        这是本机已经配好的 skill 和 MCP，按项目、个人、本机分档。Agent
+        启动时读取自己的配置，不会把这一整份清单塞进提示词。
+      </p>
       {state.projects.length > 1 && (
         <label>
           项目

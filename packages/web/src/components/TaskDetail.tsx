@@ -45,7 +45,8 @@ export default function TaskDetail({
   const [runModel, setRunModel] = useState(task.model ?? '');
   const [modelOptions, setModelOptions] = useState<Array<{ id: string; isDefault: boolean; label?: string }>>([]);
   const [runEffort, setRunEffort] = useState<ReasoningEffort | ''>(task.effort ?? '');
-  const provider = task.agentProvider === 'codex' || task.agentProvider === 'grok-build' ? task.agentProvider : 'claude';
+  const provider =
+    task.agentProvider === 'codex' || task.agentProvider === 'grok-build' ? task.agentProvider : 'claude';
   useEffect(() => {
     setRunModel(task.model ?? '');
     setRunEffort(task.effort ?? '');
@@ -55,9 +56,12 @@ export default function TaskDetail({
   }, [runModel, runEffort, onRunChange]);
   useEffect(() => {
     let cancelled = false;
-    void api.models(provider).then((res) => {
-      if (!cancelled) setModelOptions(res.models);
-    }).catch(() => undefined);
+    void api
+      .models(provider)
+      .then((res) => {
+        if (!cancelled) setModelOptions(res.models);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -72,7 +76,6 @@ export default function TaskDetail({
       setMetaPriority(taskPriority(r));
     }
   }
-
 
   const idle = IDLE_STATUSES.includes(task.status);
   const running = task.status === 'running' || task.status === 'queued';
@@ -103,7 +106,12 @@ export default function TaskDetail({
     { id: 'timeline', label: '对话' },
     { id: 'terminal', label: '终端' },
     { id: 'changes', label: '变更' },
-    { id: 'test', label: task.test ? `测试 · ${{ passed: '通过', failed: '失败', running: '运行中', stopped: '已停止' }[task.test.status]}` : '测试' },
+    {
+      id: 'test',
+      label: task.test
+        ? `测试 · ${{ passed: '通过', failed: '失败', running: '运行中', stopped: '已停止' }[task.test.status]}`
+        : '测试',
+    },
     { id: 'deliver', label: task.prUrl ? '交付 · 已开 PR' : task.commitSha ? '交付 · 已提交' : '交付' },
   ];
 
@@ -119,16 +127,19 @@ export default function TaskDetail({
         </div>
         <h2 style={{ marginTop: 8 }}>{task.title}</h2>
         <div className="detail-meta muted small">
-          <span className="mono" title="任务分支">{task.branch}</span>
+          <span className="mono" title="任务分支">
+            {task.branch}
+          </span>
           <span>基于 {task.baseBranch}</span>
           <span>
-            {money(task.costUsd)} · {task.turns} 轮
-            {task.model ? ` · ${task.model}` : ''}
+            {money(task.costUsd)} · {task.turns} 轮{task.model ? ` · ${task.model}` : ''}
             {task.effort ? ` · 思考 ${EFFORT_LABEL[task.effort]}` : ''}
             {task.usePoteto ? ' · poteto' : ''}
           </span>
         </div>
-        {task.lastError && (task.status === 'failed' || task.status === 'stopped') && <div className="detail-error">{task.lastError}</div>}
+        {task.lastError && (task.status === 'failed' || task.status === 'stopped') && (
+          <div className="detail-error">{task.lastError}</div>
+        )}
         {task.notes.map((n) => (
           <div className="detail-note" key={n}>
             {n}
@@ -136,12 +147,15 @@ export default function TaskDetail({
         ))}
       </header>
 
-
       {!gone && !archived && (
         <div className="task-meta-editor">
           <label className="muted small">
             本地优先级
-            <select value={metaPriority} onChange={(e) => setMetaPriority(e.target.value as TaskPriority)} disabled={metaBusy}>
+            <select
+              value={metaPriority}
+              onChange={(e) => setMetaPriority(e.target.value as TaskPriority)}
+              disabled={metaBusy}
+            >
               <option value="none">{PRIORITY_LABEL.none}</option>
               <option value="high">{PRIORITY_LABEL.high}</option>
               <option value="medium">{PRIORITY_LABEL.medium}</option>
@@ -190,7 +204,13 @@ export default function TaskDetail({
 
       <nav className="tabs" role="tablist">
         {tabs.map((t) => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={tab === t.id ? 'on' : ''}
+            onClick={() => setTab(t.id)}
+          >
             {t.label}
           </button>
         ))}
@@ -198,7 +218,14 @@ export default function TaskDetail({
 
       <div className="tab-body">
         {tab === 'timeline' && <Timeline items={items} running={running} agentName={agentLabel(task.agentProvider)} />}
-        {tab === 'terminal' && <TaskTerminal items={items} running={running} agentName={agentLabel(task.agentProvider)} queued={Boolean(task.pendingPrompt)} />}
+        {tab === 'terminal' && (
+          <TaskTerminal
+            items={items}
+            running={running}
+            agentName={agentLabel(task.agentProvider)}
+            queued={Boolean(task.pendingPrompt)}
+          />
+        )}
         {tab === 'changes' && <ChangesTab task={task} version={version} />}
         {tab === 'test' && <TestTab task={task} project={project} />}
         {tab === 'deliver' && <DeliverTab task={task} />}
@@ -209,9 +236,15 @@ export default function TaskDetail({
           <div className="composer-run">
             <label className="muted small">
               模型
-              <select value={modelOptions.some((m) => m.id === runModel) ? runModel : ''} disabled={!idle || modelOptions.length === 0} onChange={(e) => setRunModel(e.target.value)}>
+              <select
+                value={modelOptions.some((m) => m.id === runModel) ? runModel : ''}
+                disabled={!idle || modelOptions.length === 0}
+                onChange={(e) => setRunModel(e.target.value)}
+              >
                 {!modelOptions.some((m) => m.id === runModel) && (
-                  <option value="">{modelOptions.length === 0 ? '读不到模型列表' : runModel ? `${runModel}（不在本机列表）` : '请选择'}</option>
+                  <option value="">
+                    {modelOptions.length === 0 ? '读不到模型列表' : runModel ? `${runModel}（不在本机列表）` : '请选择'}
+                  </option>
                 )}
                 {modelOptions.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -222,7 +255,11 @@ export default function TaskDetail({
             </label>
             <label className="muted small">
               思考强度
-              <select value={runEffort} disabled={!idle} onChange={(e) => setRunEffort(e.target.value as ReasoningEffort | '')}>
+              <select
+                value={runEffort}
+                disabled={!idle}
+                onChange={(e) => setRunEffort(e.target.value as ReasoningEffort | '')}
+              >
                 <option value="">默认</option>
                 {REASONING_EFFORTS.map((level) => (
                   <option key={level} value={level}>
@@ -236,7 +273,13 @@ export default function TaskDetail({
             rows={2}
             value={text}
             disabled={!canSend}
-            placeholder={canSend ? (running ? `发给 ${agentLabel(task.agentProvider)}。当前这轮结束后在同一会话里继续` : `追问或给 ${agentLabel(task.agentProvider)} 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）`) : '当前状态不能发送'}
+            placeholder={
+              canSend
+                ? running
+                  ? `发给 ${agentLabel(task.agentProvider)}。当前这轮结束后在同一会话里继续`
+                  : `追问或给 ${agentLabel(task.agentProvider)} 新指令，例如：再补一个边界测试 / 这里不要改接口 / 解释一下为什么这样改（Ctrl+Enter 发送）`
+                : '当前状态不能发送'
+            }
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -245,7 +288,12 @@ export default function TaskDetail({
               }
             }}
           />
-          <button className="btn btn-primary" disabled={!canSend || !text.trim()} onClick={() => void send()} aria-label="发送">
+          <button
+            className="btn btn-primary"
+            disabled={!canSend || !text.trim()}
+            onClick={() => void send()}
+            aria-label="发送"
+          >
             ↑
           </button>
         </footer>

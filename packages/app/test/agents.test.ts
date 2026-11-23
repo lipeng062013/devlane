@@ -107,7 +107,6 @@ describe('environment 三家互不拖垮', () => {
   });
 });
 
-
 describe('buildGrokArgs headless', () => {
   it('用 --prompt-file，不用裸 - / TUI PROMPT', async () => {
     const { buildGrokArgs } = await import('../src/agents/grok-build');
@@ -135,7 +134,9 @@ describe('buildGrokArgs headless', () => {
 describe('parseGrokModels', () => {
   it('读出 id，星号是默认', async () => {
     const { parseGrokModels } = await import('../src/agents/grok-build');
-    const models = parseGrokModels('Available models:\n  - grok-4.7\n  * magpie/tokenshop/grok-4.7 (default)\n  - magpie/remote-magpie/infron/qwen/qwen3.8-27b:free\n');
+    const models = parseGrokModels(
+      'Available models:\n  - grok-4.7\n  * magpie/tokenshop/grok-4.7 (default)\n  - magpie/remote-magpie/infron/qwen/qwen3.8-27b:free\n',
+    );
     expect(models).toEqual([
       { id: 'grok-4.7', isDefault: false },
       { id: 'magpie/tokenshop/grok-4.7', isDefault: true },
@@ -173,10 +174,14 @@ describe('parseGrokStreamLine', () => {
   it('工具和文字在结束前就能解析，end 带轮数', async () => {
     const { parseGrokStreamLine } = await import('../src/agents/grok-build');
     expect(parseGrokStreamLine('{"type":"text","data":"先看代码"}')).toEqual([{ kind: 'text', text: '先看代码' }]);
-    expect(parseGrokStreamLine('{"type":"tool_call","toolCallId":"c1","toolName":"read_file","rawInput":{"path":"a.ts"}}')).toMatchObject([
-      { kind: 'tool_use', id: 'c1', name: 'read_file' },
-    ]);
-    expect(parseGrokStreamLine('{"type":"tool_call_update","toolCallId":"c1","status":null,"content":[{"type":"content","content":{"type":"text","text":"User cancelled the execution for tool"}}]}')).toEqual([]);
+    expect(
+      parseGrokStreamLine('{"type":"tool_call","toolCallId":"c1","toolName":"read_file","rawInput":{"path":"a.ts"}}'),
+    ).toMatchObject([{ kind: 'tool_use', id: 'c1', name: 'read_file' }]);
+    expect(
+      parseGrokStreamLine(
+        '{"type":"tool_call_update","toolCallId":"c1","status":null,"content":[{"type":"content","content":{"type":"text","text":"User cancelled the execution for tool"}}]}',
+      ),
+    ).toEqual([]);
     const end = parseGrokStreamLine('{"type":"end","num_turns":3,"total_cost_usd":0.1,"sessionId":"s"}');
     expect(end[0]).toMatchObject({ kind: 'result', turns: 3, costUsd: 0.1, costKnown: true, sessionId: 's' });
   });
@@ -190,7 +195,18 @@ describe('local model catalogs', () => {
     const { readClaudeModels, readCodexModels } = await import('../src/agents/local-models');
     const dir = mkdtempSync(join(tmpdir(), 'devlane-models-'));
     const claude = join(dir, 'settings.json');
-    writeFileSync(claude, JSON.stringify({ model: 'sonnet', modelPicker: { options: [{ model: 'opus', label: 'Opus' }, { model: 'sonnet', label: 'Sonnet' }] } }));
+    writeFileSync(
+      claude,
+      JSON.stringify({
+        model: 'sonnet',
+        modelPicker: {
+          options: [
+            { model: 'opus', label: 'Opus' },
+            { model: 'sonnet', label: 'Sonnet' },
+          ],
+        },
+      }),
+    );
     expect(readClaudeModels(claude)).toEqual([
       { id: 'opus', isDefault: false, label: 'Opus' },
       { id: 'sonnet', isDefault: true, label: 'Sonnet' },
@@ -198,7 +214,15 @@ describe('local model catalogs', () => {
     const config = join(dir, 'config.toml');
     const catalog = join(dir, 'models.json');
     writeFileSync(config, 'model = "gpt-a"\n');
-    writeFileSync(catalog, JSON.stringify({ models: [{ slug: 'gpt-a', display_name: 'A' }, { slug: 'gpt-b', visibility: 'hidden' }] }));
+    writeFileSync(
+      catalog,
+      JSON.stringify({
+        models: [
+          { slug: 'gpt-a', display_name: 'A' },
+          { slug: 'gpt-b', visibility: 'hidden' },
+        ],
+      }),
+    );
     expect(readCodexModels(config, catalog)).toEqual([{ id: 'gpt-a', isDefault: true, label: 'A' }]);
   });
 });

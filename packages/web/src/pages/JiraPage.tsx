@@ -20,7 +20,13 @@ function isBugType(type: string): boolean {
 }
 
 function describeIssue(d: JiraIssueDetail): string {
-  const parts = [d.description || '（Jira 上没有填写描述）', '', `——`, `Jira：${d.url}`, `类型：${d.type}　状态：${d.status}${d.priority ? `　优先级：${d.priority}` : ''}`];
+  const parts = [
+    d.description || '（Jira 上没有填写描述）',
+    '',
+    `——`,
+    `Jira：${d.url}`,
+    `类型：${d.type}　状态：${d.status}${d.priority ? `　优先级：${d.priority}` : ''}`,
+  ];
   if (d.components.length) parts.push(`模块：${d.components.join('、')}`);
   if (d.comments.length) {
     parts.push('', '最近评论：');
@@ -98,7 +104,9 @@ export default function JiraPage() {
       <div className="page-pad">
         <h1>Jira</h1>
         <div className="callout">
-          <p>还没有连接 Jira。填写站点地址、登录邮箱和 API Token 之后，这里会列出指派给你的 issue，可以一键变成任务。</p>
+          <p>
+            还没有连接 Jira。填写站点地址、登录邮箱和 API Token 之后，这里会列出指派给你的 issue，可以一键变成任务。
+          </p>
           <button className="btn btn-primary" onClick={() => go('settings')}>
             去设置里连接 Jira
           </button>
@@ -136,13 +144,27 @@ export default function JiraPage() {
                   </option>
                 ))}
               </select>
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="编号（ABC-123）或关键字，回车搜索" className="jira-q" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="编号（ABC-123）或关键字，回车搜索"
+                className="jira-q"
+              />
             </>
           ) : (
-            <input value={jql} onChange={(e) => setJql(e.target.value)} placeholder="JQL，例如 project = ABC AND status = 'In Progress'，回车查询" className="mono jira-q" />
+            <input
+              value={jql}
+              onChange={(e) => setJql(e.target.value)}
+              placeholder="JQL，例如 project = ABC AND status = 'In Progress'，回车查询"
+              className="mono jira-q"
+            />
           )}
         </form>
-        {result && <div className="muted small jira-jql" title="实际使用的 JQL">{result.jql}</div>}
+        {result && (
+          <div className="muted small jira-jql" title="实际使用的 JQL">
+            {result.jql}
+          </div>
+        )}
         {error && <div className="notice-inline bad">{error}</div>}
         <ul className="jira-list">
           {issues.map((i) => (
@@ -210,7 +232,13 @@ export default function JiraPage() {
               >
                 用它创建任务
               </button>
-              <a className="btn" href={detail.url} target="_blank" rel="noreferrer noopener" onClick={() => notify('已在新标签页打开 Jira')}>
+              <a
+                className="btn"
+                href={detail.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                onClick={() => notify('已在新标签页打开 Jira')}
+              >
                 在 Jira 打开
               </a>
             </div>

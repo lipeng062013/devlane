@@ -20,9 +20,7 @@ describe('adfToMarkdown', () => {
   });
 
   it('转换链接', () => {
-    const result = adfToMarkdown(
-      doc(p(t('文档', [{ type: 'link', attrs: { href: 'https://example.com' } }]))),
-    );
+    const result = adfToMarkdown(doc(p(t('文档', [{ type: 'link', attrs: { href: 'https://example.com' } }]))));
     expect(result.markdown).toBe('[文档](https://example.com)');
   });
 
@@ -52,9 +50,7 @@ describe('adfToMarkdown', () => {
   });
 
   it('转换代码块', () => {
-    const result = adfToMarkdown(
-      doc({ type: 'codeBlock', attrs: { language: 'ts' }, content: [t('const a = 1;')] }),
-    );
+    const result = adfToMarkdown(doc({ type: 'codeBlock', attrs: { language: 'ts' }, content: [t('const a = 1;')] }));
     expect(result.markdown).toBe('```ts\nconst a = 1;\n```');
   });
 
@@ -83,9 +79,7 @@ describe('adfToMarkdown', () => {
   });
 
   it('未知块节点保留文本并记录警告', () => {
-    const result = adfToMarkdown(
-      doc({ type: 'extension', content: [t('保留内容')] }, p(t('后续'))),
-    );
+    const result = adfToMarkdown(doc({ type: 'extension', content: [t('保留内容')] }, p(t('后续'))));
     expect(result.markdown).toBe('保留内容\n\n后续');
     expect(result.warnings).toEqual(['未知节点类型: extension']);
   });

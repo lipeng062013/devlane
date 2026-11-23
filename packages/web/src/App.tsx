@@ -21,8 +21,12 @@ function RailIcon({ d }: { d: string }) {
 
 const iconTask = <RailIcon d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />;
 const iconJira = <RailIcon d="M4 7h16M4 12h10M4 17h7" />;
-const iconFolder = <RailIcon d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10z" />;
-const iconGear = <RailIcon d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM12 3.5v2M12 18.5v2M4.9 6.5l1.5 1.5M17.6 16l1.5 1.5M3.5 12h2M18.5 12h2M4.9 17.5l1.5-1.5M17.6 8l1.5-1.5" />;
+const iconFolder = (
+  <RailIcon d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10z" />
+);
+const iconGear = (
+  <RailIcon d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM12 3.5v2M12 18.5v2M4.9 6.5l1.5 1.5M17.6 16l1.5 1.5M3.5 12h2M18.5 12h2M4.9 17.5l1.5-1.5M17.6 8l1.5-1.5" />
+);
 
 function parseHash(): { view: View; taskId: string | null } {
   const [, view, id] = window.location.hash.split('/');
@@ -74,7 +78,10 @@ export default function App() {
 
   useEffect(() => {
     void refresh();
-    void api.env().then(setEnv).catch(() => undefined);
+    void api
+      .env()
+      .then(setEnv)
+      .catch(() => undefined);
   }, [refresh]);
 
   // Agent 终态 toast：仅 running→review/needs_you/failed 边沿；同 status 的 poll/SSE 不重弹
@@ -165,9 +172,16 @@ export default function App() {
     <Ctx.Provider value={ctx}>
       <div className="app">
         <nav className="rail" aria-label="主导航">
-          <div className="brand-mark" title="DevLane">D</div>
+          <div className="brand-mark" title="DevLane">
+            D
+          </div>
           {nav.map(([id, label, icon]) => (
-            <button key={id} className={`rail-item ${route.view === id ? 'on' : ''}`} onClick={() => go(id)} aria-current={route.view === id ? 'page' : undefined}>
+            <button
+              key={id}
+              className={`rail-item ${route.view === id ? 'on' : ''}`}
+              onClick={() => go(id)}
+              aria-current={route.view === id ? 'page' : undefined}
+            >
               {icon}
               <span className="rail-label">{label}</span>
               {id === 'tasks' && needYou > 0 && <span className="badge">{needYou}</span>}
@@ -177,7 +191,15 @@ export default function App() {
           <div className="rail-foot muted small">
             {running > 0 && <div title={`${running} 个运行中`}>{running}</div>}
             <div>
-              {env === null ? '…' : env.claude ? <span title="Claude 就绪">●</span> : <button className="link bad-text rail-label" title="没找到 claude" onClick={() => go('settings')}>未找到</button>}
+              {env === null ? (
+                '…'
+              ) : env.claude ? (
+                <span title="Claude 就绪">●</span>
+              ) : (
+                <button className="link bad-text rail-label" title="没找到 claude" onClick={() => go('settings')}>
+                  未找到
+                </button>
+              )}
             </div>
           </div>
         </nav>
@@ -200,7 +222,11 @@ export default function App() {
 
         <div className="toasts" aria-live="polite">
           {toasts.map((t) => (
-            <div key={t.id} className={`toast ${t.level}`} onClick={() => setToasts((all) => all.filter((x) => x.id !== t.id))}>
+            <div
+              key={t.id}
+              className={`toast ${t.level}`}
+              onClick={() => setToasts((all) => all.filter((x) => x.id !== t.id))}
+            >
               {t.text}
             </div>
           ))}

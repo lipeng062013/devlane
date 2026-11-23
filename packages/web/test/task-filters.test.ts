@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '../src/types';
-import {
-  collectTagOptions,
-  mapJiraPriority,
-  normalizeTagsClient,
-  taskMatchesFilters,
-} from '../src/task-filters';
+import { collectTagOptions, mapJiraPriority, normalizeTagsClient, taskMatchesFilters } from '../src/task-filters';
 
 function task(partial: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
   return {

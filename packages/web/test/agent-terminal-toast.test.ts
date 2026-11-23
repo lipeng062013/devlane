@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  detectAgentTerminalToasts,
-  syncStatusMap,
-  taskLabel,
-} from '../src/agent-terminal-toast';
+import { detectAgentTerminalToasts, syncStatusMap, taskLabel } from '../src/agent-terminal-toast';
 import type { Task, TaskStatus } from '../src/types';
 import { STATUS_LABEL } from '../src/util';
 

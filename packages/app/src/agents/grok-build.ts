@@ -21,9 +21,8 @@ import { normalizeEffort } from '../domain';
  * 本机实名二进制是 `grok`（例：C:\\Users\\…\\.grok\\bin\\grok.exe），不是 grok-build。
  * resolve 常见名兜底；未确认协议前以 settings.grokBuildPath 为准。
  */
-const GROK_NAMES = process.platform === 'win32'
-  ? ['grok.exe', 'grok', 'grok-build.exe', 'grok-build']
-  : ['grok', 'grok-build'];
+const GROK_NAMES =
+  process.platform === 'win32' ? ['grok.exe', 'grok', 'grok-build.exe', 'grok-build'] : ['grok', 'grok-build'];
 
 export function resolveGrokBuild(custom?: string): ClaudeBinary | null {
   return resolveBinary(GROK_NAMES, custom);
@@ -138,38 +137,44 @@ export function parseGrokStreamLine(line: string): AgentMessage[] {
   const type = String(o.type ?? '');
   if (type === 'text' && typeof o.data === 'string' && o.data.trim()) return [{ kind: 'text', text: o.data }];
   if (type === 'tool_call') {
-    return [{
-      kind: 'tool_use',
-      id: String(o.toolCallId ?? ''),
-      name: String(o.toolName ?? o.title ?? 'tool'),
-      input: o.rawInput && typeof o.rawInput === 'object' ? (o.rawInput as Record<string, unknown>) : {},
-    }];
+    return [
+      {
+        kind: 'tool_use',
+        id: String(o.toolCallId ?? ''),
+        name: String(o.toolName ?? o.title ?? 'tool'),
+        input: o.rawInput && typeof o.rawInput === 'object' ? (o.rawInput as Record<string, unknown>) : {},
+      },
+    ];
   }
   if (type === 'tool_call_update') {
     const status = String(o.status ?? '');
     if (status !== 'completed' && status !== 'failed' && status !== 'error') return [];
-    return [{
-      kind: 'tool_result',
-      id: String(o.toolCallId ?? ''),
-      isError: status === 'failed' || status === 'error',
-      text: summarizeRaw(o.rawOutput ?? o.content),
-    }];
+    return [
+      {
+        kind: 'tool_result',
+        id: String(o.toolCallId ?? ''),
+        isError: status === 'failed' || status === 'error',
+        text: summarizeRaw(o.rawOutput ?? o.content),
+      },
+    ];
   }
   if (type === 'end' || type === 'error') {
     const costRaw = o.total_cost_usd;
     const costKnown = costRaw !== undefined && costRaw !== null && Number.isFinite(Number(costRaw));
     const turns = Number(o.num_turns ?? 0);
-    return [{
-      kind: 'result',
-      ok: type === 'end',
-      subtype: type === 'end' ? 'success' : 'error',
-      text: typeof o.message === 'string' ? o.message : '',
-      costUsd: costKnown ? Number(costRaw) : 0,
-      costKnown,
-      turns: Number.isFinite(turns) ? turns : 0,
-      durationMs: 0,
-      sessionId: typeof o.sessionId === 'string' ? o.sessionId : '',
-    }];
+    return [
+      {
+        kind: 'result',
+        ok: type === 'end',
+        subtype: type === 'end' ? 'success' : 'error',
+        text: typeof o.message === 'string' ? o.message : '',
+        costUsd: costKnown ? Number(costRaw) : 0,
+        costKnown,
+        turns: Number.isFinite(turns) ? turns : 0,
+        durationMs: 0,
+        sessionId: typeof o.sessionId === 'string' ? o.sessionId : '',
+      },
+    ];
   }
   return [];
 }
@@ -240,9 +245,7 @@ export function wireGrokJsonProcess(child: ChildProcess, onMessage: (m: AgentMes
 }
 
 function writePromptFile(opts: AgentStart): string {
-  const dir = opts.settingsPath
-    ? dirname(opts.settingsPath)
-    : mkdtempSync(join(tmpdir(), 'devlane-grok-'));
+  const dir = opts.settingsPath ? dirname(opts.settingsPath) : mkdtempSync(join(tmpdir(), 'devlane-grok-'));
   const file = join(dir, 'grok-prompt.txt');
   writeFileSync(file, opts.prompt, 'utf8');
   return file;

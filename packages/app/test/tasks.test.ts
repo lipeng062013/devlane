@@ -11,9 +11,11 @@ import { cleanupTemp, makeRepo, sh, tempDir } from './helpers';
 
 afterEach(cleanupTemp);
 
-const CHECK_JS = "const fs = require('fs');\nconst s = fs.readFileSync('sum.js', 'utf8');\nconsole.log('checking');\nprocess.exit(s.includes('a + b') ? 0 : 1);\n";
+const CHECK_JS =
+  "const fs = require('fs');\nconst s = fs.readFileSync('sum.js', 'utf8');\nconsole.log('checking');\nprocess.exit(s.includes('a + b') ? 0 : 1);\n";
 // 模拟一个跑很久的测试：先输出一行，记下自己的进程号，然后一直挂着
-const SLOW_JS = "const fs = require('fs');\nfs.writeFileSync('slow.pid', String(process.pid));\nconsole.log('started');\nsetInterval(() => {}, 1000);\n";
+const SLOW_JS =
+  "const fs = require('fs');\nfs.writeFileSync('slow.pid', String(process.pid));\nconsole.log('started');\nsetInterval(() => {}, 1000);\n";
 
 function alive(pid: number): boolean {
   try {
@@ -143,7 +145,9 @@ describe('运行与审阅', () => {
     expect(task.sessionStarted).toBe(true);
 
     const items = manager.timeline.read(task.id);
-    expect(items.map((i) => i.type)).toEqual(expect.arrayContaining(['note', 'prompt', 'text', 'tool', 'tool_result', 'result']));
+    expect(items.map((i) => i.type)).toEqual(
+      expect.arrayContaining(['note', 'prompt', 'text', 'tool', 'tool_result', 'result']),
+    );
     const seqs = items.map((i) => i.seq);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
     expect(new Set(seqs).size).toBe(seqs.length);
@@ -200,7 +204,12 @@ describe('权限拦截', () => {
     await waitFor(() => task.status === 'needs_you', '待你决定');
 
     expect(task.denials).toHaveLength(1);
-    expect(task.denials[0]).toMatchObject({ tool: 'Bash', command: 'npm install lodash', status: 'pending', allowable: true });
+    expect(task.denials[0]).toMatchObject({
+      tool: 'Bash',
+      command: 'npm install lodash',
+      status: 'pending',
+      allowable: true,
+    });
 
     await manager.allowDenials(task.id, ['d1'], 'exact');
     await waitFor(() => task.status === 'review', '待审阅');
@@ -454,7 +463,13 @@ describe('丢弃', () => {
 
   it('归档保留工作区，删除再清掉记录', async () => {
     const { manager, store } = setup([justFinish]);
-    const task = await manager.createTask({ ...bug, agentProvider: 'grok-build', model: 'grok-4.6', effort: 'high', usePoteto: true });
+    const task = await manager.createTask({
+      ...bug,
+      agentProvider: 'grok-build',
+      model: 'grok-4.6',
+      effort: 'high',
+      usePoteto: true,
+    });
     await waitFor(() => task.status === 'review');
     expect(task.usePoteto).toBe(true);
     expect(task.model).toBe('grok-4.6');
@@ -584,7 +599,10 @@ describe('测试命令', () => {
 describe('其他', () => {
   it('任务状态在 state 里完整，且 getTask 对未知 id 返回 404', async () => {
     const { manager } = setup([justFinish]);
-    await expectHttp(Promise.resolve().then(() => manager.getTask('T99')), 404);
+    await expectHttp(
+      Promise.resolve().then(() => manager.getTask('T99')),
+      404,
+    );
   });
 
   it('项目被删除后排队的任务会失败而不是崩溃', async () => {

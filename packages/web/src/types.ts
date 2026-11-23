@@ -14,7 +14,15 @@ export type TaskKind = 'bug' | 'feature';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
 
 export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   none: '不思考',
@@ -109,7 +117,17 @@ export type TimelineItem =
   | { seq: number; ts: string; type: 'tool'; toolUseId: string; name: string; summary: string; detail?: string }
   | { seq: number; ts: string; type: 'tool_result'; toolUseId: string; ok: boolean; text: string }
   | { seq: number; ts: string; type: 'denied'; toolUseId: string; tool: string; summary: string }
-  | { seq: number; ts: string; type: 'result'; ok: boolean; text: string; costUsd: number; costKnown?: boolean; turns: number; durationMs: number }
+  | {
+      seq: number;
+      ts: string;
+      type: 'result';
+      ok: boolean;
+      text: string;
+      costUsd: number;
+      costKnown?: boolean;
+      turns: number;
+      durationMs: number;
+    }
   | { seq: number; ts: string; type: 'note'; level: 'info' | 'error'; text: string };
 
 export interface FileChange {

@@ -48,7 +48,12 @@ check('检查项目路径', inspect.status === 200 && inspect.data.currentBranch
 const bad = await call('POST', '/api/projects/inspect', { path: join(repo, 'not-exist') });
 check('不存在的路径被拒绝', bad.status === 400, bad.data?.error);
 
-const project = await call('POST', '/api/projects', { path: repo, name: 'e2e-demo', testCommand: 'npm test', linkNodeModules: false });
+const project = await call('POST', '/api/projects', {
+  path: repo,
+  name: 'e2e-demo',
+  testCommand: 'npm test',
+  linkNodeModules: false,
+});
 check('添加项目', project.status === 201, project.data?.error);
 
 // ---- 任务 ----
@@ -80,11 +85,16 @@ for (;;) {
   if (Date.now() - t0 > 6 * 60_000) break;
   await sleep(2000);
 }
-console.log(`状态：${task.status}，花费 $${task.costUsd.toFixed(3)}，${task.turns} 轮，用时 ${Math.round((Date.now() - t0) / 1000)}s`);
+console.log(
+  `状态：${task.status}，花费 $${task.costUsd.toFixed(3)}，${task.turns} 轮，用时 ${Math.round((Date.now() - t0) / 1000)}s`,
+);
 if (task.lastError) console.log('错误：', task.lastError);
 
 if (task.status === 'needs_you') {
-  console.log('被拦截的操作：', task.denials.map((d) => d.command ?? d.detail));
+  console.log(
+    '被拦截的操作：',
+    task.denials.map((d) => d.command ?? d.detail),
+  );
   await call('POST', `/api/tasks/${id}/ignore`);
 }
 check('Claude 完成一轮（待审阅）', ['review', 'needs_you'].includes(task.status), task.status);
@@ -106,8 +116,18 @@ for (let i = 0; i < 90; i++) {
 check('测试通过', t?.status === 'passed', t?.status);
 
 // ---- 主仓库没被动 ----
-check('主仓库仍在 main 且没有任何改动', git('branch', '--show-current').trim() === 'main' && git('status', '--porcelain').trim() === '');
-check('主仓库里的 sum.js 仍是原样', git('show', 'HEAD:sum.js').includes('a - b') && !execFileSync('node', ['-e', "process.stdout.write(require('fs').readFileSync('sum.js','utf8'))"], { cwd: repo, encoding: 'utf8' }).includes('a + b'));
+check(
+  '主仓库仍在 main 且没有任何改动',
+  git('branch', '--show-current').trim() === 'main' && git('status', '--porcelain').trim() === '',
+);
+check(
+  '主仓库里的 sum.js 仍是原样',
+  git('show', 'HEAD:sum.js').includes('a - b') &&
+    !execFileSync('node', ['-e', "process.stdout.write(require('fs').readFileSync('sum.js','utf8'))"], {
+      cwd: repo,
+      encoding: 'utf8',
+    }).includes('a + b'),
+);
 
 // ---- 提交 ----
 const commit = await call('POST', `/api/tasks/${id}/commit`, { message: 'fix: 修复 add 函数返回错误结果' });
@@ -117,7 +137,9 @@ check('任务分支上有这次提交', git('log', '-1', '--format=%s', branch).
 check('main 分支没有变化', git('log', '-1', '--format=%s', 'main').trim() === 'init');
 
 // ---- 追问（同一会话续接）----
-const follow = await call('POST', `/api/tasks/${id}/message`, { text: '只回答：sum.js 里现在 add 函数的返回表达式是什么？不要修改任何文件。' });
+const follow = await call('POST', `/api/tasks/${id}/message`, {
+  text: '只回答：sum.js 里现在 add 函数的返回表达式是什么？不要修改任何文件。',
+});
 check('追问被接受', follow.status === 200, follow.data?.error);
 let after;
 for (let i = 0; i < 120; i++) {

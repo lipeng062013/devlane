@@ -33,10 +33,20 @@ export type TaskStatus =
 /** 思考强度。和 grok --effort 的档位一致。空表示用 Agent 自己的默认。 */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
 
 export function normalizeEffort(v: unknown): ReasoningEffort | undefined {
-  return typeof v === 'string' && (REASONING_EFFORTS as readonly string[]).includes(v) ? (v as ReasoningEffort) : undefined;
+  return typeof v === 'string' && (REASONING_EFFORTS as readonly string[]).includes(v)
+    ? (v as ReasoningEffort)
+    : undefined;
 }
 
 export interface Project {
@@ -190,4 +200,8 @@ export type TimelineItem =
   | { seq: number; ts: string; type: 'note'; level: 'info' | 'error'; text: string };
 
 /** 去掉 seq 和 ts 的时间线条目，由写入方补齐。 */
-export type NewTimelineItem = TimelineItem extends infer T ? (T extends unknown ? Omit<T, 'seq' | 'ts'> : never) : never;
+export type NewTimelineItem = TimelineItem extends infer T
+  ? T extends unknown
+    ? Omit<T, 'seq' | 'ts'>
+    : never
+  : never;

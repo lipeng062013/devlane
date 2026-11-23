@@ -122,11 +122,7 @@ describe('buildInitialPrompt / templates', () => {
   it('默认描述空时回落补充说明；自定义空描述保持空', () => {
     const def = buildInitialPrompt(project, { ...bugTask, description: '' });
     expect(def).toContain('没有补充描述');
-    const custom = buildInitialPrompt(
-      project,
-      { ...bugTask, description: '' },
-      { bug: 'DESC[{{description}}]' },
-    );
+    const custom = buildInitialPrompt(project, { ...bugTask, description: '' }, { bug: 'DESC[{{description}}]' });
     expect(custom).toBe('DESC[]');
   });
 });

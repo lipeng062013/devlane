@@ -76,7 +76,15 @@ export function groupTimeline(items: TimelineItem[]): TimelineItem[] {
   return out;
 }
 
-export default function Timeline({ items, running, agentName = 'Agent' }: { items: TimelineItem[]; running: boolean; agentName?: string }) {
+export default function Timeline({
+  items,
+  running,
+  agentName = 'Agent',
+}: {
+  items: TimelineItem[];
+  running: boolean;
+  agentName?: string;
+}) {
   items = groupTimeline(items);
   const results = useMemo(() => {
     const map = new Map<string, Extract<TimelineItem, { type: 'tool_result' }>>();
@@ -161,7 +169,9 @@ export default function Timeline({ items, running, agentName = 'Agent' }: { item
             return (
               <div className={`tl-result ${item.ok ? 'ok' : 'bad'}`} key={item.seq}>
                 <div className="tl-label">
-                  {item.ok ? '这一轮完成' : '这一轮未完成'} · {item.costKnown === false ? '花费未报告' : money(item.costUsd)} · {item.turns} 轮 · {formatDuration(item.durationMs)}
+                  {item.ok ? '这一轮完成' : '这一轮未完成'} ·{' '}
+                  {item.costKnown === false ? '花费未报告' : money(item.costUsd)} · {item.turns} 轮 ·{' '}
+                  {formatDuration(item.durationMs)}
                 </div>
                 {item.text && <div className="tl-final">{item.text}</div>}
               </div>

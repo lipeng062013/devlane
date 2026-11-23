@@ -34,7 +34,13 @@ describe('draftPullRequest', () => {
       kind: 'bug',
       title: '入口',
       description: '改跳转',
-      test: { status: 'passed', command: 'npm test', exitCode: 0, durationMs: 12500, output: '第一行\nPASS src/link.spec.ts\n' },
+      test: {
+        status: 'passed',
+        command: 'npm test',
+        exitCode: 0,
+        durationMs: 12500,
+        output: '第一行\nPASS src/link.spec.ts\n',
+      },
     });
     expect(draft.body).toContain('执行 `npm test`，结果通过，退出码 0，耗时 13 秒');
     expect(draft.body).toContain('PASS src/link.spec.ts');

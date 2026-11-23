@@ -68,7 +68,11 @@ if (denial) {
   const runs = tl.filter((i) => i.type === 'tool' && i.name === 'Bash' && i.summary.includes(COMMAND));
   const lastRun = runs.at(-1);
   const res = tl.find((i) => i.type === 'tool_result' && i.toolUseId === lastRun?.toolUseId);
-  check('放行后这条命令真的执行成功', Boolean(res?.ok) && /\d+\.\d+\.\d+/.test(res?.text ?? ''), (res?.text ?? '').slice(0, 60));
+  check(
+    '放行后这条命令真的执行成功',
+    Boolean(res?.ok) && /\d+\.\d+\.\d+/.test(res?.text ?? ''),
+    (res?.text ?? '').slice(0, 60),
+  );
   const final = tl.filter((i) => i.type === 'result').at(-1);
   console.log('  最终回答：', (final?.text ?? '').split('\n')[0].slice(0, 100));
   check('主仓库没有任何改动', git('status', '--porcelain').trim() === '');
@@ -77,4 +81,3 @@ if (denial) {
 await call('POST', `/api/tasks/${id}/discard`);
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过');
 process.exitCode = failed ? 1 : 0;
-

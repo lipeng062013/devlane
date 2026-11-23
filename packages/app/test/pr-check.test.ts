@@ -20,7 +20,12 @@ describe('summarizeCi', () => {
     expect(summarizeCi([])).toBe('none');
   });
   it('T2 failure/pending', () => {
-    expect(summarizeCi([{ status: 'COMPLETED', conclusion: 'FAILURE' }, { status: 'COMPLETED', conclusion: 'SUCCESS' }])).toBe('failure');
+    expect(
+      summarizeCi([
+        { status: 'COMPLETED', conclusion: 'FAILURE' },
+        { status: 'COMPLETED', conclusion: 'SUCCESS' },
+      ]),
+    ).toBe('failure');
     expect(summarizeCi([{ status: 'IN_PROGRESS' }])).toBe('pending');
   });
 });
@@ -28,8 +33,12 @@ describe('summarizeCi', () => {
 describe('summarizeMerge', () => {
   it('T3 states', () => {
     expect(summarizeMerge({ state: 'MERGED' }).merge).toBe('merged');
-    expect(summarizeMerge({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }).merge).toBe('mergeable');
-    expect(summarizeMerge({ state: 'OPEN', mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }).merge).toBe('blocked');
+    expect(summarizeMerge({ state: 'OPEN', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN' }).merge).toBe(
+      'mergeable',
+    );
+    expect(summarizeMerge({ state: 'OPEN', mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY' }).merge).toBe(
+      'blocked',
+    );
     expect(summarizeMerge({ state: 'CLOSED' }).merge).toBe('closed');
   });
 });

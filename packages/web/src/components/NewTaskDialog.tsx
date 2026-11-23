@@ -8,7 +8,15 @@ import Modal from './Modal';
 
 const LAST_PROJECT = 'devlane.lastProject';
 
-export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: TaskDraft; onClose: () => void; onCreated: (t: Task) => void }) {
+export default function NewTaskDialog({
+  draft,
+  onClose,
+  onCreated,
+}: {
+  draft: TaskDraft;
+  onClose: () => void;
+  onCreated: (t: Task) => void;
+}) {
   const { state, go, act } = useApp();
   const projects = state.projects;
   const remembered = localStorage.getItem(LAST_PROJECT);
@@ -33,12 +41,15 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
     let cancelled = false;
     setModel('');
     setModelOptions([]);
-    void api.models(agentProvider).then((res) => {
-      if (cancelled) return;
-      setModelOptions(res.models);
-      const preferred = res.models.find((m) => m.isDefault) ?? res.models[0];
-      if (preferred) setModel(preferred.id);
-    }).catch(() => undefined);
+    void api
+      .models(agentProvider)
+      .then((res) => {
+        if (cancelled) return;
+        setModelOptions(res.models);
+        const preferred = res.models.find((m) => m.isDefault) ?? res.models[0];
+        if (preferred) setModel(preferred.id);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -122,13 +133,25 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         <label>
           Agent
           <div className="segmented">
-            <button type="button" className={agentProvider === 'claude' ? 'on' : ''} onClick={() => setAgentProvider('claude')}>
+            <button
+              type="button"
+              className={agentProvider === 'claude' ? 'on' : ''}
+              onClick={() => setAgentProvider('claude')}
+            >
               Claude（默认 Claude）
             </button>
-            <button type="button" className={agentProvider === 'codex' ? 'on' : ''} onClick={() => setAgentProvider('codex')}>
+            <button
+              type="button"
+              className={agentProvider === 'codex' ? 'on' : ''}
+              onClick={() => setAgentProvider('codex')}
+            >
               Codex
             </button>
-            <button type="button" className={agentProvider === 'grok-build' ? 'on' : ''} onClick={() => setAgentProvider('grok-build')}>
+            <button
+              type="button"
+              className={agentProvider === 'grok-build' ? 'on' : ''}
+              onClick={() => setAgentProvider('grok-build')}
+            >
               Grok Build
             </button>
           </div>
@@ -163,7 +186,13 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         </label>
         <label>
           标题
-          <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="一句话说清楚要解决什么" />
+          <input
+            value={title}
+            maxLength={200}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+            placeholder="一句话说清楚要解决什么"
+          />
         </label>
         <label>
           描述
@@ -182,7 +211,11 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
         <div className="form-row">
           <label>
             优先级（本地，不回写 Jira）
-            <select id="new-task-priority" value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+            <select
+              id="new-task-priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
+            >
               <option value="none">{PRIORITY_LABEL.none}</option>
               <option value="high">{PRIORITY_LABEL.high}</option>
               <option value="medium">{PRIORITY_LABEL.medium}</option>
@@ -195,7 +228,12 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
               {tags.map((t) => (
                 <span className="chip chip-tag" key={t}>
                   {t}
-                  <button type="button" className="tag-x" aria-label={'移除 ' + t} onClick={() => setTags(tags.filter((x) => x !== t))}>
+                  <button
+                    type="button"
+                    className="tag-x"
+                    aria-label={'移除 ' + t}
+                    onClick={() => setTags(tags.filter((x) => x !== t))}
+                  >
                     ×
                   </button>
                 </span>
@@ -226,7 +264,8 @@ export default function NewTaskDialog({ draft, onClose, onCreated }: { draft: Ta
           <input value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder={project?.baseBranch} />
         </label>
         <p className="muted small">
-          会在 <span className="mono">~/.devlane/worktrees</span> 里为它建一个独立的工作区和分支，不会动你当前的工作目录。
+          会在 <span className="mono">~/.devlane/worktrees</span>{' '}
+          里为它建一个独立的工作区和分支，不会动你当前的工作目录。
         </p>
         <div className="form-actions">
           <span className="spacer" />

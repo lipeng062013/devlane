@@ -59,7 +59,9 @@ export default function TaskLane({
     <aside className="lane" aria-label="这条任务">
       <div>
         <div className="lane-title">这条任务</div>
-        <div className="lane-sub">{project?.name ?? task.projectId} · {STATUS_LABEL[task.status]}</div>
+        <div className="lane-sub">
+          {project?.name ?? task.projectId} · {STATUS_LABEL[task.status]}
+        </div>
       </div>
 
       <section className="lane-card">
@@ -71,7 +73,11 @@ export default function TaskLane({
           </div>
         ))}
         <div className="lane-meter" aria-hidden>
-          <i style={{ width: `${Math.min(100, ((idx + (task.status === 'pr_opened' ? 1 : 0.35)) / STEPS.length) * 100)}%` }} />
+          <i
+            style={{
+              width: `${Math.min(100, ((idx + (task.status === 'pr_opened' ? 1 : 0.35)) / STEPS.length) * 100)}%`,
+            }}
+          />
         </div>
       </section>
 
@@ -100,7 +106,11 @@ export default function TaskLane({
             <i style={{ width: `${ratio}%` }} />
           </div>
         )}
-        {task.test && <div className="lane-step">测试 · {{ passed: '通过', failed: '失败', running: '运行中', stopped: '已停止' }[task.test.status]}</div>}
+        {task.test && (
+          <div className="lane-step">
+            测试 · {{ passed: '通过', failed: '失败', running: '运行中', stopped: '已停止' }[task.test.status]}
+          </div>
+        )}
       </section>
 
       <div className="lane-actions">
@@ -115,7 +125,17 @@ export default function TaskLane({
           </button>
         )}
         {(task.status === 'stopped' || task.status === 'failed') && (
-          <button className="btn btn-sm btn-primary" onClick={() => void act(() => api.message(task.id, '请继续完成任务，并在最后简要汇报当前状态。', { model: runModel.trim(), effort: runEffort }))}>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() =>
+              void act(() =>
+                api.message(task.id, '请继续完成任务，并在最后简要汇报当前状态。', {
+                  model: runModel.trim(),
+                  effort: runEffort,
+                }),
+              )
+            }
+          >
             继续
           </button>
         )}
@@ -134,7 +154,10 @@ export default function TaskLane({
             删除
           </button>
         )}
-        <button className="btn btn-sm" onClick={() => void navigator.clipboard.writeText(task.worktreePath).then(() => notify('已复制工作区路径'))}>
+        <button
+          className="btn btn-sm"
+          onClick={() => void navigator.clipboard.writeText(task.worktreePath).then(() => notify('已复制工作区路径'))}
+        >
           复制路径
         </button>
       </div>

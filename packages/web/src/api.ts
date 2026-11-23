@@ -61,9 +61,13 @@ export interface ProjectInput {
 export const api = {
   state: () => request<AppState>('GET', '/api/state'),
   env: (refresh = false) => request<EnvInfo>('GET', `/api/env${refresh ? '?refresh=1' : ''}`),
-  capabilities: (projectId: string) => request<{ projectId: string; items: Capability[] }>('GET', `/api/capabilities?projectId=${enc(projectId)}`),
+  capabilities: (projectId: string) =>
+    request<{ projectId: string; items: Capability[] }>('GET', `/api/capabilities?projectId=${enc(projectId)}`),
   models: (provider: string) =>
-    request<{ provider: string; models: Array<{ id: string; isDefault: boolean; label?: string }> }>('GET', `/api/models?provider=${enc(provider)}`),
+    request<{ provider: string; models: Array<{ id: string; isDefault: boolean; label?: string }> }>(
+      'GET',
+      `/api/models?provider=${enc(provider)}`,
+    ),
 
   inspectRepo: (path: string) => request<RepoInfo>('POST', '/api/projects/inspect', { path }),
   addProject: (input: ProjectInput) => request<Project>('POST', '/api/projects', input),
@@ -73,10 +77,15 @@ export const api = {
   createTask: (input: NewTaskInput) => request<Task>('POST', '/api/tasks', input),
   updateTaskMeta: (id: string, patch: { tags?: string[]; priority?: TaskPriority }) =>
     request<Task>('PATCH', `/api/tasks/${enc(id)}`, patch),
-  timeline: (id: string, after = 0) => request<{ items: TimelineItem[] }>('GET', `/api/tasks/${enc(id)}/timeline?after=${after}`),
+  timeline: (id: string, after = 0) =>
+    request<{ items: TimelineItem[] }>('GET', `/api/tasks/${enc(id)}/timeline?after=${after}`),
   changes: (id: string) => request<ChangeSet>('GET', `/api/tasks/${enc(id)}/changes`),
   message: (id: string, text: string, run?: { model?: string; effort?: string }) =>
-    request<Task>('POST', `/api/tasks/${enc(id)}/message`, { text, model: run?.model ?? '', effort: run?.effort ?? '' }),
+    request<Task>('POST', `/api/tasks/${enc(id)}/message`, {
+      text,
+      model: run?.model ?? '',
+      effort: run?.effort ?? '',
+    }),
   allow: (id: string, denialIds: string[], mode: 'exact' | 'prefix') =>
     request<Task>('POST', `/api/tasks/${enc(id)}/allow`, { denialIds, mode }),
   ignore: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/ignore`),
@@ -84,8 +93,10 @@ export const api = {
   runTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test`),
   stopTests: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/test/stop`),
   commit: (id: string, message: string) => request<Task>('POST', `/api/tasks/${enc(id)}/commit`, { message }),
-  prDraft: (id: string) => request<{ title: string; body: string; fromTemplate: boolean }>('GET', `/api/tasks/${enc(id)}/pr-draft`),
-  openPr: (id: string, title: string, body: string, base?: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body, base }),
+  prDraft: (id: string) =>
+    request<{ title: string; body: string; fromTemplate: boolean }>('GET', `/api/tasks/${enc(id)}/pr-draft`),
+  openPr: (id: string, title: string, body: string, base?: string) =>
+    request<Task>('POST', `/api/tasks/${enc(id)}/pr`, { title, body, base }),
   repoBranches: (path: string) => request<RepoInfo>('POST', '/api/projects/inspect', { path }),
   refreshPrCheck: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr-check`),
   mergePr: (id: string) => request<Task>('POST', `/api/tasks/${enc(id)}/pr-merge`),

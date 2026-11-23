@@ -14,9 +14,7 @@ import {
 import { readCodexModels } from './local-models';
 
 /** PATH / 设置里常见的 Codex CLI 文件名（Windows 含 .cmd）。 */
-const CODEX_NAMES = process.platform === 'win32'
-  ? ['codex.exe', 'codex.cmd', 'codex.bat', 'codex']
-  : ['codex'];
+const CODEX_NAMES = process.platform === 'win32' ? ['codex.exe', 'codex.cmd', 'codex.bat', 'codex'] : ['codex'];
 
 export function resolveCodex(custom?: string): ClaudeBinary | null {
   return resolveBinary(CODEX_NAMES, custom);
@@ -80,10 +78,7 @@ export class CodexAgent implements AgentAdapter {
 }
 
 /** 把 stdout 按行塞进 text；结束时补一个简单 result。供 Codex/Grok 复用。 */
-export function wireLineTextProcess(
-  child: ChildProcess,
-  onMessage: (m: AgentMessage) => void,
-): AgentProcess {
+export function wireLineTextProcess(child: ChildProcess, onMessage: (m: AgentMessage) => void): AgentProcess {
   let killed = false;
   let buffer = '';
   let stderr = '';

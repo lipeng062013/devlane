@@ -282,13 +282,19 @@ describe('worktreesRootFor', () => {
   const win = process.platform === 'win32';
 
   it.runIf(win)('项目与数据目录同一盘符：放在数据目录里', () => {
-    expect(worktreesRootFor('C:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(join('C:\\Users\\me\\.devlane', 'worktrees'));
-    expect(worktreesRootFor('c:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(join('C:\\Users\\me\\.devlane', 'worktrees'));
+    expect(worktreesRootFor('C:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(
+      join('C:\\Users\\me\\.devlane', 'worktrees'),
+    );
+    expect(worktreesRootFor('c:\\code\\app', 'C:\\Users\\me\\.devlane')).toBe(
+      join('C:\\Users\\me\\.devlane', 'worktrees'),
+    );
   });
 
   it.runIf(win)('跨盘符：放在项目旁边，保证和 node_modules 链接目标同盘', () => {
     expect(worktreesRootFor('D:\\house-responsive', 'C:\\Users\\me\\.devlane')).toBe('D:\\.devlane-worktrees');
-    expect(worktreesRootFor('D:\\work\\house-responsive', 'C:\\Users\\me\\.devlane')).toBe('D:\\work\\.devlane-worktrees');
+    expect(worktreesRootFor('D:\\work\\house-responsive', 'C:\\Users\\me\\.devlane')).toBe(
+      'D:\\work\\.devlane-worktrees',
+    );
   });
 
   it.runIf(win)('跨盘符时，算出的依赖相对路径以 .. 开头（Nuxt 会据此跳过，不会报错）', async () => {

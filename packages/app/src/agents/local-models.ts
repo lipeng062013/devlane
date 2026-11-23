@@ -17,7 +17,8 @@ export function readClaudeModels(settingsPath = join(homedir(), '.claude', 'sett
   } catch {
     return [];
   }
-  const root = parsed && typeof parsed === 'object' ? (parsed as { model?: unknown; modelPicker?: { options?: unknown } }) : {};
+  const root =
+    parsed && typeof parsed === 'object' ? (parsed as { model?: unknown; modelPicker?: { options?: unknown } }) : {};
   const current = typeof root.model === 'string' ? root.model : '';
   const options = Array.isArray(root.modelPicker?.options) ? root.modelPicker.options : [];
   const out: ListedModel[] = [];
@@ -61,7 +62,11 @@ export function readCodexModels(
     const id = typeof row.slug === 'string' ? row.slug.trim() : '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, isDefault: id === current, label: typeof row.display_name === 'string' ? row.display_name : undefined });
+    out.push({
+      id,
+      isDefault: id === current,
+      label: typeof row.display_name === 'string' ? row.display_name : undefined,
+    });
   }
   if (current && !seen.has(current)) out.unshift({ id: current, isDefault: true });
   if (!out.some((m) => m.isDefault) && out[0]) out[0].isDefault = true;

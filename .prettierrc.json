@@ -6,7 +6,5 @@
   "trailingComma": "all",
   "arrowParens": "always",
   "endOfLine": "auto",
-  "overrides": [
-    { "files": "*.md", "options": { "proseWrap": "preserve" } }
-  ]
+  "overrides": [{ "files": "*.md", "options": { "proseWrap": "preserve" } }]
 }

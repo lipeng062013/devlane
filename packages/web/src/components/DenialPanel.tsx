@@ -34,10 +34,19 @@ export default function DenialPanel({ task }: { task: Task }) {
         提交和推送请自己在「交付」里做。
       </p>
       <div className="denials-actions">
-        <button className="btn btn-primary btn-sm" disabled={ids.length === 0} onClick={() => void act(() => api.allow(task.id, ids, 'exact'))}>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={ids.length === 0}
+          onClick={() => void act(() => api.allow(task.id, ids, 'exact'))}
+        >
           只放行选中的这几条并继续
         </button>
-        <button className="btn btn-sm" disabled={ids.length === 0} onClick={() => void act(() => api.allow(task.id, ids, 'prefix'))} title="例如放行 npm install lodash 时，同时放行所有 npm install …">
+        <button
+          className="btn btn-sm"
+          disabled={ids.length === 0}
+          onClick={() => void act(() => api.allow(task.id, ids, 'prefix'))}
+          title="例如放行 npm install lodash 时，同时放行所有 npm install …"
+        >
           放行同类命令并继续
         </button>
         <span className="spacer" />

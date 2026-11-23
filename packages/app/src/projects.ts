@@ -83,7 +83,6 @@ export function removeProject(store: StateStore, id: string): void {
 
 // ---------- 设置 ----------
 
-
 const PROMPT_TEMPLATE_MAX = 20_000;
 
 function normalizePromptTemplate(v: unknown): string | undefined {
@@ -120,7 +119,8 @@ export function updateSettings(store: StateStore, input: SettingsInput): Setting
   const s = store.data.settings;
   if (input.claudePath !== undefined) s.claudePath = input.claudePath.trim().replace(/^"|"$/g, '') || undefined;
   if (input.codexPath !== undefined) s.codexPath = input.codexPath.trim().replace(/^"|"$/g, '') || undefined;
-  if (input.grokBuildPath !== undefined) s.grokBuildPath = input.grokBuildPath.trim().replace(/^"|"$/g, '') || undefined;
+  if (input.grokBuildPath !== undefined)
+    s.grokBuildPath = input.grokBuildPath.trim().replace(/^"|"$/g, '') || undefined;
   if (input.model !== undefined) {
     const model = input.model.trim();
     if (model && !isValidModel(model)) throw new HttpError(400, '模型名包含不允许的字符');
@@ -173,8 +173,7 @@ export function updateJira(store: StateStore, input: JiraInput): void {
   // 不填 Token 表示保持原来的
   const apiToken = input.apiToken?.trim() || current?.apiToken || '';
   if (!apiToken) throw new HttpError(400, '请填写 API Token');
-  const writeEnabled =
-    input.writeEnabled !== undefined ? Boolean(input.writeEnabled) : Boolean(current?.writeEnabled);
+  const writeEnabled = input.writeEnabled !== undefined ? Boolean(input.writeEnabled) : Boolean(current?.writeEnabled);
   store.data.settings.jira = {
     baseUrl,
     email,

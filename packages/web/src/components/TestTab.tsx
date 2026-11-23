@@ -62,12 +62,18 @@ export default function TestTab({ task, project }: { task: Task; project: Projec
             停止测试
           </button>
         ) : (
-          <button className="btn btn-sm btn-primary" disabled={task.status === 'discarded'} onClick={() => void act(() => api.runTests(task.id))}>
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={task.status === 'discarded'}
+            onClick={() => void act(() => api.runTests(task.id))}
+          >
             {t ? '重新运行' : '运行测试'}
           </button>
         )}
       </div>
-      <p className="muted small">在这个任务的工作区里运行，与 Claude 看到的代码相同。运行中可以随时停止，会连同它启动的子进程一起终止。</p>
+      <p className="muted small">
+        在这个任务的工作区里运行，与 Claude 看到的代码相同。运行中可以随时停止，会连同它启动的子进程一起终止。
+      </p>
       {looksLikeDevServer(command) && <div className="notice-inline warn">{DEV_SERVER_HINT}</div>}
       {t?.output ? (
         <pre

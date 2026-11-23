@@ -3,18 +3,15 @@ import TaskDetail from '../components/TaskDetail';
 import TaskLane from '../components/TaskLane';
 import { useApp } from '../ctx';
 import type { ReasoningEffort, Task, TaskPriority } from '../types';
-import {
-  PRIORITY_LABEL,
-  collectTagOptions,
-  taskMatchesFilters,
-  taskPriority,
-  taskTags,
-} from '../task-filters';
+import { PRIORITY_LABEL, collectTagOptions, taskMatchesFilters, taskPriority, taskTags } from '../task-filters';
 import { KIND_LABEL, STATUS_LABEL, taskRank, timeAgo } from '../util';
 
 type Filter = 'active' | 'all' | 'done';
 
-function groupByProject(tasks: Task[], projects: { id: string; name: string }[]): Array<{ id: string; name: string; tasks: Task[] }> {
+function groupByProject(
+  tasks: Task[],
+  projects: { id: string; name: string }[],
+): Array<{ id: string; name: string; tasks: Task[] }> {
   const order: string[] = [];
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
@@ -186,7 +183,10 @@ export default function TasksPage({ selectedId }: { selectedId: string | null })
                   const tags = taskTags(t).slice(0, 2);
                   return (
                     <li key={t.id}>
-                      <button className={`task-item ${t.id === selectedId ? 'sel' : ''}`} onClick={() => openTask(t.id)}>
+                      <button
+                        className={`task-item ${t.id === selectedId ? 'sel' : ''}`}
+                        onClick={() => openTask(t.id)}
+                      >
                         <span className={`dot st-${t.status}`} aria-hidden />
                         <span className="task-main">
                           <span className="task-title">{t.title}</span>
@@ -196,7 +196,9 @@ export default function TasksPage({ selectedId }: { selectedId: string | null })
                           </span>
                           {(pri !== 'none' || tags.length > 0) && (
                             <span className="task-chips">
-                              {pri !== 'none' && <span className={`chip chip-pri chip-pri-${pri}`}>{PRIORITY_LABEL[pri]}</span>}
+                              {pri !== 'none' && (
+                                <span className={`chip chip-pri chip-pri-${pri}`}>{PRIORITY_LABEL[pri]}</span>
+                              )}
                               {tags.map((tag) => (
                                 <span className="chip chip-tag" key={tag}>
                                   {tag}

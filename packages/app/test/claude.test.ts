@@ -32,7 +32,9 @@ describe('parseClaudeLine（真实 claude 输出）', () => {
     for (const r of kinds('tool_result') as Array<Extract<AgentMessage, { kind: 'tool_result' }>>) {
       expect(uses.has(r.id)).toBe(true);
     }
-    const failed = (kinds('tool_result') as Array<Extract<AgentMessage, { kind: 'tool_result' }>>).filter((r) => r.isError);
+    const failed = (kinds('tool_result') as Array<Extract<AgentMessage, { kind: 'tool_result' }>>).filter(
+      (r) => r.isError,
+    );
     // 第一次 npm test（红）和被拒绝的 npm view
     expect(failed.length).toBe(2);
   });
@@ -40,7 +42,10 @@ describe('parseClaudeLine（真实 claude 输出）', () => {
   it('识别权限拒绝事件，并能关联到被拒绝的命令', () => {
     const denied = kinds('denied')[0] as Extract<AgentMessage, { kind: 'denied' }>;
     expect(denied.toolName).toBe('Bash');
-    const use = kinds('tool_use').find((m) => (m as { id: string }).id === denied.toolUseId) as Extract<AgentMessage, { kind: 'tool_use' }>;
+    const use = kinds('tool_use').find((m) => (m as { id: string }).id === denied.toolUseId) as Extract<
+      AgentMessage,
+      { kind: 'tool_use' }
+    >;
     expect(use.input.command).toBe('npm view lodash version');
   });
 
@@ -60,7 +65,9 @@ describe('parseClaudeLine（真实 claude 输出）', () => {
   });
 
   it('错误结果被识别为失败', () => {
-    const [m] = parseClaudeLine('{"type":"result","subtype":"error_max_budget_usd","is_error":true,"total_cost_usd":3.1,"num_turns":9}');
+    const [m] = parseClaudeLine(
+      '{"type":"result","subtype":"error_max_budget_usd","is_error":true,"total_cost_usd":3.1,"num_turns":9}',
+    );
     expect(m).toMatchObject({ kind: 'result', ok: false, subtype: 'error_max_budget_usd', costUsd: 3.1 });
   });
 

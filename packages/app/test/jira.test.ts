@@ -15,12 +15,19 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const cfg = { baseUrl: 'https://house730.atlassian.net', email: 'me@example.com', apiToken: 'secret-token' };
 
 function client(handler: (url: string, init?: RequestInit) => Response | Promise<Response>, extra: object = {}) {
-  return new JiraClient({ ...cfg, sleep: async () => undefined, fetchImpl: handler as unknown as typeof fetch, ...extra });
+  return new JiraClient({
+    ...cfg,
+    sleep: async () => undefined,
+    fetchImpl: handler as unknown as typeof fetch,
+    ...extra,
+  });
 }
 
 describe('normalizeBaseUrl', () => {
   it('只保留协议和主机', () => {
-    expect(normalizeBaseUrl(' https://house730.atlassian.net/jira/software/projects/X ')).toBe('https://house730.atlassian.net');
+    expect(normalizeBaseUrl(' https://house730.atlassian.net/jira/software/projects/X ')).toBe(
+      'https://house730.atlassian.net',
+    );
     expect(normalizeBaseUrl('http://jira.local:8080/')).toBe('http://jira.local:8080');
   });
 
@@ -172,10 +179,9 @@ describe('JiraClient', () => {
   it('429 按 Retry-After 等待后重试', async () => {
     let calls = 0;
     const waits: number[] = [];
-    const c = client(
-      () => (++calls === 1 ? json({}, 429, { 'retry-after': '3' }) : json({ displayName: 'x' })),
-      { sleep: async (ms: number) => void waits.push(ms) },
-    );
+    const c = client(() => (++calls === 1 ? json({}, 429, { 'retry-after': '3' }) : json({ displayName: 'x' })), {
+      sleep: async (ms: number) => void waits.push(ms),
+    });
     await c.myself();
     expect(waits).toEqual([3000]);
   });
@@ -234,5 +240,4 @@ describe('JiraClient', () => {
     expect(err.message).not.toContain('secret-token');
     expect(String(err.stack ?? '')).not.toContain('secret-token');
   });
-
 });
