@@ -95,6 +95,8 @@ export interface Task {
   branch: string;
   worktreePath: string;
   status: TaskStatus;
+  /** 排队等待发给 Agent 的下一条指令（服务端 Task.pendingPrompt）。 */
+  pendingPrompt?: string;
   runCount: number;
   costUsd: number;
   turns: number;

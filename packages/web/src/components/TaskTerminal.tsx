@@ -47,10 +47,10 @@ function renderLine(item: TimelineItem): string {
   if (item.type === 'note') return `${at}  ${item.text}`;
   if (item.type === 'prompt') return `${at}  › ${oneLine(item.text)}`;
   if (item.type === 'text') return item.text;
-  if (item.type === 'tool_use') return `${at}  ${item.name}  ${oneLine(JSON.stringify(item.input))}`;
-  if (item.type === 'tool_result') return `${at}  ${item.isError ? '失败' : '完成'}  ${oneLine(item.text)}`;
+  if (item.type === 'tool') return `${at}  ${item.name}  ${oneLine(item.summary)}`;
+  if (item.type === 'tool_result') return `${at}  ${item.ok ? '完成' : '失败'}  ${oneLine(item.text)}`;
   if (item.type === 'result') return `${at}  ${item.ok ? '这一轮完成' : '这一轮未完成'}  ${item.turns} 轮`;
-  if (item.type === 'denial') return `${at}  拦截  ${item.command ?? item.detail}`;
+  if (item.type === 'denied') return `${at}  拦截  ${item.tool}  ${oneLine(item.summary)}`;
   return '';
 }
 
